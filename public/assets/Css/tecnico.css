@@ -1,0 +1,414 @@
+/* Estilos específicos para la interfaz de técnico */
+.tecnico-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+    background: var(--light-bg);
+    min-height: 100vh;
+}
+
+.tecnico-header {
+    background: var(--white);
+    padding: 2rem;
+    border-radius: 1rem;
+    box-shadow: var(--box-shadow);
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.tecnico-header h1 {
+    color: var(--black);
+    font-size: 2.8rem;
+    margin-bottom: 0.5rem;
+}
+
+.tecnico-header .subtitle {
+    color: var(--light-color);
+    font-size: 1.6rem;
+}
+
+.main-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+    margin-bottom: 3rem;
+}
+
+.action-card {
+    background: var(--white);
+    padding: 2rem;
+    border-radius: 1rem;
+    box-shadow: var(--box-shadow);
+    text-align: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    cursor: pointer;
+}
+
+.action-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.15);
+}
+
+.action-card i {
+    font-size: 4rem;
+    color: var(--yellow);
+    margin-bottom: 1rem;
+}
+
+.action-card h3 {
+    color: var(--black);
+    font-size: 1.8rem;
+    margin-bottom: 1rem;
+}
+
+.action-card p {
+    color: var(--light-color);
+    font-size: 1.4rem;
+    line-height: 1.6;
+}
+
+/* Modal styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.3s ease;
+}
+
+.modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: var(--white);
+    padding: 3rem;
+    border-radius: 1rem;
+    box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.3);
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    animation: slideIn 0.3s ease;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--light-bg);
+}
+
+.modal-header h2 {
+    color: var(--black);
+    font-size: 2.4rem;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 3rem;
+    color: var(--light-color);
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+
+.close-btn:hover {
+    color: var(--black);
+}
+
+.form-group {
+    margin-bottom: 2rem;
+}
+
+.form-group label {
+    display: block;
+    color: var(--black);
+    font-size: 1.6rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 1.2rem 1.5rem;
+    border: 2px solid var(--light-bg);
+    border-radius: 0.5rem;
+    font-size: 1.6rem;
+    color: var(--black);
+    background: var(--white);
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--yellow);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+/* Users table */
+.users-section {
+    background: var(--white);
+    border-radius: 1rem;
+    box-shadow: var(--box-shadow);
+    overflow: hidden;
+    margin-bottom: 2rem;
+}
+
+.section-header {
+    background: var(--yellow);
+    color: var(--white);
+    padding: 1.5rem 2rem;
+    font-size: 1.8rem;
+    font-weight: 600;
+}
+
+.search-bar {
+    padding: 2rem;
+    background: var(--light-bg);
+    border-bottom: 1px solid var(--border);
+}
+
+.search-input {
+    width: 100%;
+    padding: 1.2rem 1.5rem;
+    border: 2px solid var(--white);
+    border-radius: 0.5rem;
+    font-size: 1.6rem;
+    background: var(--white);
+}
+
+.users-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.users-table th,
+.users-table td {
+    padding: 1.5rem 2rem;
+    text-align: left;
+    border-bottom: 1px solid var(--light-bg);
+}
+
+.users-table th {
+    background: var(--light-bg);
+    color: var(--black);
+    font-weight: 600;
+    font-size: 1.4rem;
+}
+
+.users-table td {
+    color: var(--light-color);
+    font-size: 1.4rem;
+}
+
+.users-table tbody tr:hover {
+    background: var(--light-bg);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-action {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 0.3rem;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-edit {
+    background: var(--yellow);
+    color: var(--white);
+}
+
+.btn-delete {
+    background: #f44336;
+    color: var(--white);
+}
+
+.btn-view {
+    background: #4CAF50;
+    color: var(--white);
+}
+
+.btn-action:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.3rem 0.6rem rgba(0, 0, 0, 0.2);
+}
+
+/* Confirmation modal */
+.confirmation-modal .modal-content {
+    text-align: center;
+}
+
+.confirmation-modal .modal-content h2 {
+    color: #f44336;
+    margin-bottom: 1rem;
+}
+
+.confirmation-modal .modal-content p {
+    color: var(--light-color);
+    font-size: 1.6rem;
+    margin-bottom: 2rem;
+}
+
+.confirmation-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.btn-confirm {
+    padding: 1rem 2rem;
+    border: none;
+    border-radius: 0.5rem;
+    font-size: 1.6rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-confirm-yes {
+    background: #f44336;
+    color: var(--white);
+}
+
+.btn-confirm-no {
+    background: var(--light-bg);
+    color: var(--black);
+}
+
+.btn-confirm:hover {
+    transform: translateY(-2px);
+}
+
+/* Success/Error messages */
+.message {
+    padding: 1.5rem 2rem;
+    border-radius: 0.5rem;
+    margin-bottom: 2rem;
+    font-size: 1.6rem;
+    font-weight: 500;
+}
+
+.message.success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.message.error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .tecnico-container {
+        padding: 1rem;
+    }
+
+    .main-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .users-table {
+        font-size: 1.2rem;
+    }
+
+    .users-table th,
+    .users-table td {
+        padding: 1rem;
+    }
+
+    .action-buttons {
+        flex-direction: column;
+    }
+}
+
+/* Loading state */
+.loading {
+    display: none;
+    text-align: center;
+    padding: 2rem;
+}
+
+.loading.active {
+    display: block;
+}
+
+.spinner {
+    border: 4px solid var(--light-bg);
+    border-top: 4px solid var(--yellow);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Status indicators */
+.status {
+    padding: 0.3rem 0.8rem;
+    border-radius: 1rem;
+    font-size: 1.2rem;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.status.activo {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status.inactivo {
+    background: #f8d7da;
+    color: #721c24;
+}
