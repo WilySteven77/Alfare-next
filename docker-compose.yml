@@ -1,10 +1,12 @@
+name: alfared-${APP_ENV:-dev}
+
 services:
   alfared-database:
     image: postgres:16-alpine
     networks:
       - alfa-network
     env_file:
-      - ./.env
+      - ${ENV_FILE:-.env.dev}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     environment:
@@ -32,11 +34,17 @@ services:
     networks:
       - alfa-network
     env_file:
-      - ./.env
+      - ${ENV_FILE:-.env.dev}
     environment:
       DB_HOST: ${DB_HOST:-host.docker.internal}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE: ${DB_DATABASE}
       HOSTNAME: 0.0.0.0
       PORT: ${PUERTO_BACKEND_CONTENEDOR}
+      NODE_ENV: ${NODE_ENV:-production}
+      APP_URL: ${APP_URL}
 
   alfared-frontend:
     build: ./frontend
@@ -46,9 +54,13 @@ services:
       - "${PUERTO_FRONTEND_HOST}:${PUERTO_FRONTEND_CONTENEDOR}"
     networks:
       - alfa-network
+    env_file:
+      - ${ENV_FILE:-.env.dev}
 
 networks:
   alfa-network:
+    name: alfared-${APP_ENV:-dev}-net
 
 volumes:
   alfadata:
+    name: alfared-${APP_ENV:-dev}-data

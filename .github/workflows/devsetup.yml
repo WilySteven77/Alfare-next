@@ -1,0 +1,32 @@
+name: Deploy por entorno
+
+on:
+  push:
+    branches: [develop, test, main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Elegir archivo de entorno segun la rama
+        shell: bash
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          if [ "$BRANCH" = "main" ]; then
+            echo "ENV_FILE=.env.prod" >> "$GITHUB_ENV"
+            echo "APP_ENV=prod" >> "$GITHUB_ENV"
+          elif [ "$BRANCH" = "test" ]; then
+            echo "ENV_FILE=.env.test" >> "$GITHUB_ENV"
+            echo "APP_ENV=test" >> "$GITHUB_ENV"
+          else
+            echo "ENV_FILE=.env.dev" >> "$GITHUB_ENV"
+            echo "APP_ENV=dev" >> "$GITHUB_ENV"
+          fi
+          echo "Rama $BRANCH -> archivo de entorno"
+
+      - name: Validar Docker Compose
+        run: docker compose --env-file "${ENV_FILE}" config

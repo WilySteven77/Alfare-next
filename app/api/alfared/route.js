@@ -5,7 +5,7 @@ export async function GET() {
   if (missing.length) {
     return Response.json({
       success: false,
-      error: `Faltan variables de entorno: ${missing.join(', ')}. Copia .env.example a .env.`,
+      error: `Faltan variables de entorno: ${missing.join(', ')}. Usa .env.dev, .env.test o .env.prod, o copia .env.example a .env.`,
       code: 'DB_CONFIG',
     }, { status: 503 });
   }

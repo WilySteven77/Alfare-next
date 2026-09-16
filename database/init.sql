@@ -303,6 +303,31 @@ END;
 $$;
 
 -- =========================================================
+-- DATOS INICIALES (solo si la base nace vacía en Docker)
+-- =========================================================
+INSERT INTO Roles (nombre) VALUES
+    ('ADMINISTRADOR'),
+    ('TECNICO'),
+    ('CONTADOR'),
+    ('CLIENTE')
+ON CONFLICT (nombre) DO NOTHING;
+
+INSERT INTO Usuarios (nombre, apellido, email, contrasena, rol_id)
+SELECT 'Admin', 'Demo', 'admin.demo@alfared.local', 'alfared2024', id_rol
+FROM Roles WHERE nombre = 'ADMINISTRADOR'
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO Usuarios (nombre, apellido, email, contrasena, rol_id)
+SELECT 'Tecnico', 'Demo', 'tecnico.demo@alfared.local', 'alfared2024', id_rol
+FROM Roles WHERE nombre = 'TECNICO'
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO Usuarios (nombre, apellido, email, contrasena, rol_id)
+SELECT 'Contador', 'Demo', 'contador.demo@alfared.local', 'alfared2024', id_rol
+FROM Roles WHERE nombre = 'CONTADOR'
+ON CONFLICT (email) DO NOTHING;
+
+-- =========================================================
 -- ÍNDICE
 -- =========================================================
 CREATE INDEX IF NOT EXISTS idx_usuarios_email ON Usuarios(email);

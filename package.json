@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "docker:dev": "docker compose --env-file .env.dev up --build",
+    "docker:test": "docker compose --env-file .env.test up --build",
+    "docker:prod": "docker compose --env-file .env.prod up --build -d"
   },
   "dependencies": {
     "next": "16.3.4",

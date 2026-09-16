@@ -13,7 +13,7 @@ function dbConfigError() {
   if (!missing.length) return null;
   return json({
     success: false,
-    error: `Faltan variables de entorno: ${missing.join(', ')}. Copia env.example a .env y completa tus datos de PostgreSQL.`,
+    error: `Faltan variables de entorno: ${missing.join(', ')}. Usa .env.dev, .env.test o .env.prod, o copia .env.example a .env.`,
     code: 'DB_CONFIG',
   }, 503);
 }
