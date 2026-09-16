@@ -7,8 +7,6 @@ services:
       - alfa-network
     env_file:
       - ${ENV_FILE:-.env.dev}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -29,14 +27,13 @@ services:
     depends_on:
       alfared-database:
         condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - alfa-network
     env_file:
       - ${ENV_FILE:-.env.dev}
     environment:
-      DB_HOST: ${DB_HOST:-host.docker.internal}
+      # CAMBIO AQUÍ: Reemplaza host.docker.internal por alfared-database
+      DB_HOST: ${DB_HOST:-alfared-database} 
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -51,7 +48,7 @@ services:
     depends_on:
       - alfared-backend
     ports:
-      - "${PUERTO_FRONTEND_HOST}:${PUERTO_FRONTEND_CONTENEDOR}"
+      - "${PUERTO_FRONTEND_HOST=127.0.0.1:80}:${PUERTO_FRONTEND_CONTENEDOR}"
     networks:
       - alfa-network
     env_file:
