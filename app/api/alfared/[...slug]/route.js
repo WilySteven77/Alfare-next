@@ -118,6 +118,85 @@ function mapPago(row) {
   };
 }
 
+function mapOrdenServicio(row) {
+  return {
+    id_orden: row.id_orden,
+    cliente_nombre: row.cliente_nombre,
+    cliente_cedula: row.cliente_cedula,
+    cliente_email: row.cliente_email,
+    cliente_telefono: row.cliente_telefono,
+    cliente_direccion: row.cliente_direccion,
+    tipo_servicio: row.tipo_servicio,
+    observaciones: row.observaciones,
+    estado: row.estado,
+    cliente_id: row.cliente_id,
+    tecnico_id: row.tecnico_id,
+    tecnico_nombre: row.tecnico_nombre || null,
+    fecha_programada: row.fecha_programada,
+    fecha_creacion: row.fecha_creacion,
+    fecha_cierre: row.fecha_cierre,
+    notas_cierre: row.notas_cierre,
+  };
+}
+
+const TIPOS_ORDEN = new Set([
+  'INSTALACION',
+  'REPORTE_DANO',
+  'MANTENIMIENTO',
+  'INTERNET',
+  'TELEVISION',
+  'TECNOLOGIA',
+  'ELECTRICO',
+]);
+
+const ESTADOS_ORDEN = new Set(['PENDIENTE', 'EN_CURSO', 'CERRADA', 'CANCELADA']);
+
+let ordenesTablaLista = false;
+
+async function ensureOrdenesServicioTable() {
+  if (ordenesTablaLista) return;
+  await query(`
+    CREATE TABLE IF NOT EXISTS OrdenesServicio (
+      id_orden SERIAL PRIMARY KEY,
+      cliente_nombre VARCHAR(150) NOT NULL,
+      cliente_cedula VARCHAR(30) NOT NULL,
+      cliente_email VARCHAR(150),
+      cliente_telefono VARCHAR(40) NOT NULL,
+      cliente_direccion VARCHAR(255) NOT NULL,
+      tipo_servicio VARCHAR(50) NOT NULL
+        CHECK (tipo_servicio IN (
+          'INSTALACION','REPORTE_DANO','MANTENIMIENTO',
+          'INTERNET','TELEVISION','TECNOLOGIA','ELECTRICO'
+        )),
+      observaciones TEXT,
+      estado VARCHAR(30) NOT NULL DEFAULT 'PENDIENTE'
+        CHECK (estado IN ('PENDIENTE', 'EN_CURSO', 'CERRADA', 'CANCELADA')),
+      cliente_id INT REFERENCES Usuarios(id_usuario) ON DELETE SET NULL,
+      tecnico_id INT REFERENCES Usuarios(id_usuario) ON DELETE SET NULL,
+      fecha_programada DATE,
+      fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      fecha_cierre TIMESTAMP,
+      notas_cierre TEXT
+    )
+  `);
+  await query('CREATE INDEX IF NOT EXISTS idx_ordenes_estado ON OrdenesServicio(estado)');
+  await query('CREATE INDEX IF NOT EXISTS idx_ordenes_tecnico ON OrdenesServicio(tecnico_id)');
+  await query('CREATE INDEX IF NOT EXISTS idx_ordenes_cedula ON OrdenesServicio(cliente_cedula)');
+  ordenesTablaLista = true;
+}
+
+async function getOrdenById(id) {
+  const result = await query(
+    `SELECT o.*,
+            TRIM(CONCAT(COALESCE(t.nombre, ''), ' ', COALESCE(t.apellido, ''))) AS tecnico_nombre
+     FROM OrdenesServicio o
+     LEFT JOIN Usuarios t ON t.id_usuario = o.tecnico_id
+     WHERE o.id_orden = $1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
 async function getUsuarioPorId(id) {
   const result = await query(
     `SELECT u.id_usuario, u.nombre, u.apellido, u.email, u.activo, r.nombre AS rol_nombre
@@ -426,6 +505,266 @@ async function handleRequest(req, slug) {
       }
     }
 
+    if (path[0] === 'ordenes-servicio') {
+      await ensureOrdenesServicioTable();
+
+      if (path.length === 1 && method === 'GET') {
+        const url = new URL(req.url);
+        const estado = String(url.searchParams.get('estado') || '').toUpperCase();
+        const q = String(url.searchParams.get('q') || '').trim();
+        const tecnicoId = url.searchParams.get('tecnico_id');
+        const params = [];
+        const where = [];
+
+        if (estado && ESTADOS_ORDEN.has(estado)) {
+          params.push(estado);
+          where.push(`o.estado = $${params.length}`);
+        }
+        if (tecnicoId) {
+          params.push(Number(tecnicoId));
+          where.push(`o.tecnico_id = $${params.length}`);
+        }
+        if (q) {
+          params.push(`%${q.toLowerCase()}%`);
+          where.push(`(
+            LOWER(o.cliente_nombre) LIKE $${params.length}
+            OR LOWER(o.cliente_cedula) LIKE $${params.length}
+            OR LOWER(COALESCE(o.cliente_email, '')) LIKE $${params.length}
+            OR LOWER(o.cliente_telefono) LIKE $${params.length}
+            OR LOWER(o.cliente_direccion) LIKE $${params.length}
+          )`);
+        }
+
+        const sql = `
+          SELECT o.*,
+                 TRIM(CONCAT(COALESCE(t.nombre, ''), ' ', COALESCE(t.apellido, ''))) AS tecnico_nombre
+          FROM OrdenesServicio o
+          LEFT JOIN Usuarios t ON t.id_usuario = o.tecnico_id
+          ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+          ORDER BY
+            CASE o.estado
+              WHEN 'PENDIENTE' THEN 1
+              WHEN 'EN_CURSO' THEN 2
+              WHEN 'CERRADA' THEN 3
+              ELSE 4
+            END,
+            o.fecha_creacion DESC`;
+        const rows = await query(sql, params);
+        return json({
+          success: true,
+          data: rows.rows.map(mapOrdenServicio),
+          message: `Órdenes de servicio: ${rows.rowCount}`,
+        });
+      }
+
+      if (path.length === 1 && method === 'POST') {
+        const body = await parseBody(req);
+        const cliente_nombre = String(body.cliente_nombre || '').trim();
+        const cliente_cedula = String(body.cliente_cedula || '').trim();
+        const cliente_email = String(body.cliente_email || '').trim() || null;
+        const cliente_telefono = String(body.cliente_telefono || '').trim();
+        const cliente_direccion = String(body.cliente_direccion || '').trim();
+        const tipo_servicio = String(body.tipo_servicio || '').trim().toUpperCase();
+        const observaciones = String(body.observaciones || '').trim() || null;
+        const fecha_programada = body.fecha_programada || null;
+        const cliente_id = body.cliente_id ? Number(body.cliente_id) : null;
+
+        if (!cliente_nombre || !cliente_cedula || !cliente_telefono || !cliente_direccion || !tipo_servicio) {
+          return json({ success: false, error: 'Faltan campos obligatorios', code: 'VALIDATION_ERROR' }, 400);
+        }
+        if (!TIPOS_ORDEN.has(tipo_servicio)) {
+          return json({ success: false, error: 'tipo_servicio inválido', code: 'VALIDATION_ERROR' }, 400);
+        }
+        if (cliente_id) {
+          const cli = await getUsuarioPorId(cliente_id);
+          if (!cli) {
+            return json({ success: false, error: 'cliente_id no existe', code: 'USER_NOT_FOUND' }, 404);
+          }
+        }
+
+        const tokenUser = usuarioDesdeToken(req);
+        let tecnico_id = body.tecnico_id ? Number(body.tecnico_id) : null;
+        if (!tecnico_id && tokenUser?.tipo === 'tecnico') {
+          tecnico_id = tokenUser.id_usuario;
+        }
+
+        const inserted = await query(
+          `INSERT INTO OrdenesServicio (
+             cliente_nombre, cliente_cedula, cliente_email, cliente_telefono, cliente_direccion,
+             tipo_servicio, observaciones, estado, cliente_id, tecnico_id, fecha_programada
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,'PENDIENTE',$8,$9,$10)
+           RETURNING id_orden`,
+          [
+            cliente_nombre,
+            cliente_cedula,
+            cliente_email,
+            cliente_telefono,
+            cliente_direccion,
+            tipo_servicio,
+            observaciones,
+            cliente_id,
+            tecnico_id,
+            fecha_programada,
+          ]
+        );
+        const orden = await getOrdenById(inserted.rows[0].id_orden);
+        return json({
+          success: true,
+          data: mapOrdenServicio(orden),
+          message: 'Orden de servicio creada',
+        }, 201);
+      }
+
+      if (path[1] && path.length === 2 && method === 'GET') {
+        const id = Number(path[1]);
+        const orden = await getOrdenById(id);
+        if (!orden) {
+          return json({ success: false, error: 'Orden no encontrada', code: 'NOT_FOUND' }, 404);
+        }
+        return json({ success: true, data: mapOrdenServicio(orden), message: `Orden #${id}` });
+      }
+
+      if (path[1] && path.length === 2 && (method === 'PATCH' || method === 'PUT')) {
+        const id = Number(path[1]);
+        const existing = await getOrdenById(id);
+        if (!existing) {
+          return json({ success: false, error: 'Orden no encontrada', code: 'NOT_FOUND' }, 404);
+        }
+
+        const body = await parseBody(req);
+        const tokenUser = usuarioDesdeToken(req);
+        const accion = String(body.accion || '').toLowerCase();
+
+        if (accion === 'tomar' || accion === 'iniciar') {
+          if (String(existing.estado).toUpperCase() === 'CERRADA' || String(existing.estado).toUpperCase() === 'CANCELADA') {
+            return json({
+              success: false,
+              error: `No se puede iniciar una orden en estado ${existing.estado}`,
+              code: 'INVALID_STATE',
+            }, 409);
+          }
+          const tecnicoId = body.tecnico_id
+            ? Number(body.tecnico_id)
+            : (tokenUser?.id_usuario || existing.tecnico_id);
+          await query(
+            `UPDATE OrdenesServicio
+             SET estado = 'EN_CURSO', tecnico_id = COALESCE($2, tecnico_id)
+             WHERE id_orden = $1`,
+            [id, tecnicoId || null]
+          );
+        } else if (accion === 'cerrar') {
+          if (String(existing.estado).toUpperCase() === 'CANCELADA') {
+            return json({
+              success: false,
+              error: 'No se puede cerrar una orden cancelada',
+              code: 'INVALID_STATE',
+            }, 409);
+          }
+          await query(
+            `UPDATE OrdenesServicio
+             SET estado = 'CERRADA',
+                 fecha_cierre = CURRENT_TIMESTAMP,
+                 notas_cierre = COALESCE($2, notas_cierre),
+                 tecnico_id = COALESCE($3, tecnico_id)
+             WHERE id_orden = $1`,
+            [id, body.notas_cierre || null, tokenUser?.id_usuario || null]
+          );
+        } else if (accion === 'cancelar') {
+          if (String(existing.estado).toUpperCase() === 'CERRADA') {
+            return json({
+              success: false,
+              error: 'No se puede cancelar una orden ya cerrada',
+              code: 'INVALID_STATE',
+            }, 409);
+          }
+          await query(
+            `UPDATE OrdenesServicio
+             SET estado = 'CANCELADA',
+                 fecha_cierre = CURRENT_TIMESTAMP,
+                 notas_cierre = COALESCE($2, notas_cierre)
+             WHERE id_orden = $1`,
+            [id, body.notas_cierre || 'Cancelada']
+          );
+        } else if (accion === 'reabrir') {
+          await query(
+            `UPDATE OrdenesServicio
+             SET estado = 'PENDIENTE', fecha_cierre = NULL, notas_cierre = NULL
+             WHERE id_orden = $1`,
+            [id]
+          );
+        } else {
+          const tipo = body.tipo_servicio
+            ? String(body.tipo_servicio).trim().toUpperCase()
+            : existing.tipo_servicio;
+          if (!TIPOS_ORDEN.has(tipo)) {
+            return json({ success: false, error: 'tipo_servicio inválido', code: 'VALIDATION_ERROR' }, 400);
+          }
+          const estado = body.estado
+            ? String(body.estado).trim().toUpperCase()
+            : existing.estado;
+          if (!ESTADOS_ORDEN.has(estado)) {
+            return json({ success: false, error: 'estado inválido', code: 'VALIDATION_ERROR' }, 400);
+          }
+
+          await query(
+            `UPDATE OrdenesServicio SET
+               cliente_nombre = COALESCE($2, cliente_nombre),
+               cliente_cedula = COALESCE($3, cliente_cedula),
+               cliente_email = COALESCE($4, cliente_email),
+               cliente_telefono = COALESCE($5, cliente_telefono),
+               cliente_direccion = COALESCE($6, cliente_direccion),
+               tipo_servicio = $7,
+               observaciones = COALESCE($8, observaciones),
+               estado = $9,
+               fecha_programada = COALESCE($10, fecha_programada),
+               tecnico_id = COALESCE($11, tecnico_id),
+               notas_cierre = COALESCE($12, notas_cierre),
+               fecha_cierre = CASE
+                 WHEN $9 IN ('CERRADA', 'CANCELADA') THEN COALESCE(fecha_cierre, CURRENT_TIMESTAMP)
+                 WHEN $9 IN ('PENDIENTE', 'EN_CURSO') THEN NULL
+                 ELSE fecha_cierre
+               END
+             WHERE id_orden = $1`,
+            [
+              id,
+              body.cliente_nombre != null ? String(body.cliente_nombre).trim() : null,
+              body.cliente_cedula != null ? String(body.cliente_cedula).trim() : null,
+              body.cliente_email != null ? String(body.cliente_email).trim() : null,
+              body.cliente_telefono != null ? String(body.cliente_telefono).trim() : null,
+              body.cliente_direccion != null ? String(body.cliente_direccion).trim() : null,
+              tipo,
+              body.observaciones != null ? String(body.observaciones).trim() : null,
+              estado,
+              body.fecha_programada || null,
+              body.tecnico_id != null ? Number(body.tecnico_id) : null,
+              body.notas_cierre != null ? String(body.notas_cierre).trim() : null,
+            ]
+          );
+        }
+
+        const updated = await getOrdenById(id);
+        return json({
+          success: true,
+          data: mapOrdenServicio(updated),
+          message: accion ? `Orden ${accion}` : 'Orden actualizada',
+        });
+      }
+
+      if (path[1] && path.length === 2 && method === 'DELETE') {
+        const id = Number(path[1]);
+        const existing = await getOrdenById(id);
+        if (!existing) {
+          return json({ success: false, error: 'Orden no encontrada', code: 'NOT_FOUND' }, 404);
+        }
+        await query('DELETE FROM OrdenesServicio WHERE id_orden = $1', [id]);
+        return json({
+          success: true,
+          data: { id_orden: id },
+          message: `Orden #${id} eliminada`,
+        });
+      }
+    }
+
     if (path[0] === 'dashboard' && path[1] && method === 'GET') {
       const usuarioId = Number(path[1]);
       const user = await getUsuarioPorId(usuarioId);
@@ -510,5 +849,9 @@ export async function PATCH(req) {
 }
 
 export async function PUT(req) {
+  return handleRequest(req, segmentsFrom(req));
+}
+
+export async function DELETE(req) {
   return handleRequest(req, segmentsFrom(req));
 }

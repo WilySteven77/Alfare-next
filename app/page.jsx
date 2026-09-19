@@ -322,18 +322,18 @@ export default function HomePage() {
               <i className="fas fa-plus"></i>
             </div>
           </a>
-          <a href="/assets/iconos/ChatbotE.png" className="box">
+          <Link href="/tecnico" className="box">
             <div className="image">
               <img src="/assets/iconos/ChatbotE.png" alt="Agenda y Soporte Técnico" />
             </div>
             <div className="content">
               <div className="info">
                 <h3>Agenda y Soporte Técnico</h3>
-                <p>Estamos desarrollando un sistema para programar instalaciones, servicios y reportes de daños.</p>
+                <p>Programa instalaciones, mantenimientos y reportes de daños desde el portal del técnico.</p>
               </div>
               <i className="fas fa-plus"></i>
             </div>
-          </a>
+          </Link>
           <a href="/assets/iconos/BankingS.png" className="box">
             <div className="image">
               <img src="/assets/iconos/BankingS.png" alt="Pagos en Línea" />

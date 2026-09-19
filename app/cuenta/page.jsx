@@ -109,6 +109,18 @@ export default function CuentaPage() {
                 </p>
                 <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                   <Link id="linkGestion" href="/pqrs-gestion" className="btn" style={{ display: staffPuedeGestion(usuario?.tipo) ? 'inline-block' : 'none' }}>Ir a gestión PQRS</Link>
+                  <Link
+                    href="/tecnico"
+                    className="btn"
+                    style={{
+                      display: ['tecnico', 'administrador'].includes(String(usuario?.tipo || '').toLowerCase())
+                        ? 'inline-block'
+                        : 'none',
+                      background: '#ff9800',
+                    }}
+                  >
+                    Órdenes de servicio
+                  </Link>
                   <button type="button" id="btnCerrarSesion" className="btn" onClick={handleLogout}>Cerrar sesión</button>
                 </div>
                 <p className="muted" style={{ fontSize: '1.2rem', marginTop: '1rem' }}>
