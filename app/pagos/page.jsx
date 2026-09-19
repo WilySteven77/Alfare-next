@@ -2,87 +2,125 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getFacturasByCliente, getPagosPorUsuarioPublico, getToken, getStoredUsuario } from '@/lib/alfaredApi';
+import {
+  getFacturasByCliente,
+  getPagosPorUsuarioPublico,
+  pagarFactura,
+  getStoredUsuario,
+} from '@/lib/alfaredApi';
 
 export default function PagosPage() {
   const [clienteId, setClienteId] = useState('');
   const [facturas, setFacturas] = useState([]);
   const [historialPagos, setHistorialPagos] = useState([]);
   const [mensaje, setMensaje] = useState('');
+  const [mensajeTipo, setMensajeTipo] = useState('error');
   const [mostrarModal, setMostrarModal] = useState(false);
   const [facturaSeleccionada, setFacturaSeleccionada] = useState(null);
   const [detalleFactura, setDetalleFactura] = useState(null);
   const [sesionClienteActiva, setSesionClienteActiva] = useState(false);
+  const [metodoPago, setMetodoPago] = useState('transferencia');
+  const [pagando, setPagando] = useState(false);
 
-  // Simulación de carga inicial al montar el componente
   useEffect(() => {
-    // Aquí puedes verificar si hay sesión activa almacenada
-    const usuarioGuardado = sessionStorage.getItem('alfared_usuario');
-    if (usuarioGuardado) {
-      try {
-        const u = JSON.parse(usuarioGuardado);
-        if (u && u.id_usuario && u.tipo?.toLowerCase() === 'cliente') {
-          setClienteId(u.id_usuario);
-          setSesionClienteActiva(true);
-        }
-      } catch (_) {}
+    const u = getStoredUsuario();
+    if (u && u.id_usuario) {
+      const tipo = String(u.tipo || '').toLowerCase();
+      if (!tipo || tipo === 'cliente') {
+        setClienteId(String(u.id_usuario));
+        setSesionClienteActiva(tipo === 'cliente');
+      }
     }
   }, []);
 
-   // Manejador para buscar facturas por ID de usuario
-   const buscarFacturas = async (e) => {
-     e.preventDefault();
-     setMensaje('Buscando facturas...');
-     setDetalleFactura(null);
-     setFacturas([]);
-     setHistorialPagos([]);
+  const refrescarHistorial = async (usuarioId) => {
+    try {
+      const histRes = await getPagosPorUsuarioPublico(usuarioId);
+      if (histRes && histRes.success && Array.isArray(histRes.data)) {
+        setHistorialPagos(histRes.data);
+      }
+    } catch (_) {}
+  };
 
-     try {
-       const res = await getFacturasByCliente(clienteId);
-       if (!res) {
-         setMensaje('Error consultando facturas.');
-         return;
-       }
-       if (res.success === false && res.code === 'USER_NOT_FOUND') {
-         setMensaje('El ID ingresado no es válido o no existe en el sistema.');
-         return;
-       }
-       if (res.success === false && res.code && ['NO_TOKEN', 'INVALID_TOKEN', 'ACCESS_DENIED'].includes(res.code)) {
-         setMensaje('Debe iniciar sesión y consultar con su propio ID de usuario.');
-         return;
-       }
-       if (res.success) {
-         const data = Array.isArray(res.data) ? res.data : [];
-         setFacturas(data);
-         setMensaje('');
-         if (data.length === 0) {
-           setMensaje('No hay facturas registradas para este usuario.');
-         }
-       } else {
-         setMensaje(res.error || 'No se pudieron cargar las facturas.');
-       }
-     } catch (err) {
-       setMensaje('Error de red al consultar facturas.');
-     }
+  const cargarFacturas = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setMensaje('Buscando facturas...');
+      setMensajeTipo('error');
+    }
+    setDetalleFactura(null);
+    setFacturas([]);
+    setHistorialPagos([]);
 
-     try {
-       const histRes = await getPagosPorUsuarioPublico(clienteId);
-       if (histRes && histRes.success && Array.isArray(histRes.data)) {
-         setHistorialPagos(histRes.data);
-       }
-     } catch (_) {}
-   };
+    try {
+      const res = await getFacturasByCliente(clienteId);
+      if (!res) {
+        if (!silent) setMensaje('Error consultando facturas.');
+        return;
+      }
+      if (res.success === false && res.code === 'USER_NOT_FOUND') {
+        setMensaje('El ID ingresado no es válido o no existe en el sistema.');
+        setMensajeTipo('error');
+        return;
+      }
+      if (res.success === false && res.code && ['NO_TOKEN', 'INVALID_TOKEN', 'ACCESS_DENIED'].includes(res.code)) {
+        setMensaje('Debe iniciar sesión y consultar con su propio ID de usuario.');
+        setMensajeTipo('error');
+        return;
+      }
+      if (res.success) {
+        const data = Array.isArray(res.data) ? res.data : [];
+        setFacturas(data);
+        if (!silent) {
+          setMensaje(data.length === 0 ? 'No hay facturas registradas para este usuario.' : '');
+        }
+      } else if (!silent) {
+        setMensaje(res.error || 'No se pudieron cargar las facturas.');
+      }
+    } catch (err) {
+      if (!silent) setMensaje('Error de red al consultar facturas.');
+    }
+
+    await refrescarHistorial(clienteId);
+  };
+
+  const buscarFacturas = async (e) => {
+    if (e) e.preventDefault();
+    await cargarFacturas({ silent: false });
+  };
 
   const abrirModalPago = (factura) => {
     setFacturaSeleccionada(factura);
+    setMetodoPago('transferencia');
     setMostrarModal(true);
   };
 
-  const confirmarYContinuarPago = () => {
-    if (facturaSeleccionada) {
-      alert(`Enviando factura #${facturaSeleccionada.id_factura} por un monto de $${facturaSeleccionada.monto} a Mercado Pago...`);
+  const confirmarYContinuarPago = async () => {
+    if (!facturaSeleccionada) return;
+    setPagando(true);
+    setMensaje('');
+    try {
+      const res = await pagarFactura(facturaSeleccionada.id_factura, metodoPago);
+      if (res && res.success) {
+        setMensajeTipo('success');
+        setMensaje(
+          res.message ||
+            `Pago registrado. Factura #${facturaSeleccionada.id_factura} quedó PAGADA.`
+        );
+        setMostrarModal(false);
+        setFacturaSeleccionada(null);
+        await cargarFacturas({ silent: true });
+      } else {
+        setMensajeTipo('error');
+        setMensaje(res?.error || 'No se pudo registrar el pago.');
+        setMostrarModal(false);
+      }
+    } catch (_) {
+      setMensajeTipo('error');
+      setMensaje('Error de red al registrar el pago.');
+      setMostrarModal(false);
+    } finally {
+      setPagando(false);
     }
-    setMostrarModal(false);
   };
 
   const verDetalle = (f) => {
@@ -105,8 +143,7 @@ export default function PagosPage() {
       <main style={{ paddingBottom: '4rem' }}>
         <section style={{ paddingTop: '3rem' }}>
           <div className="container-narrow">
-            
-            {/* Banner Sesión Cliente */}
+
             <div id="bannerSesionCliente" className="card" style={{ display: sesionClienteActiva ? 'block' : 'none', marginBottom: '1rem' }}>
               <div className="card-body">
                 <p style={{ fontSize: '1.35rem', margin: 0 }}>
@@ -125,26 +162,25 @@ export default function PagosPage() {
 
             <div className="spacer-md"></div>
 
-            {/* Formulario de Consulta por ID */}
             <div className="card">
               <div className="card-body">
                 <h3>Consulta tus facturas</h3>
                 <p className="muted" style={{ fontSize: '1.4rem', lineHeight: '2', padding: '1rem 0' }}>
                   Ingresa tu ID de usuario registrado. Solo verás las facturas asociadas a ese ID.
-                  Las facturas en estado <strong>PENDIENTE</strong> pueden pagarse con Mercado Pago.
+                  Las facturas en estado <strong>PENDIENTE</strong> se pueden pagar en línea; el pago queda registrado en la base de datos.
                 </p>
                 <form onSubmit={buscarFacturas} id="invoiceSearchForm">
                   <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: '1rem' }}>
                     <div>
                       <label style={{ fontSize: '1.4rem', display: 'block', marginBottom: '.5rem' }}>ID Usuario</label>
-                      <input 
-                        type="number" 
-                        id="searchCustomerId" 
-                        className="box" 
-                        placeholder="Ej: 101" 
+                      <input
+                        type="number"
+                        id="searchCustomerId"
+                        className="box"
+                        placeholder="Ej: 101"
                         value={clienteId}
                         onChange={(e) => setClienteId(e.target.value)}
-                        required 
+                        required
                       />
                     </div>
                   </div>
@@ -152,11 +188,18 @@ export default function PagosPage() {
                     <button type="submit" className="btn">Buscar facturas</button>
                   </div>
                 </form>
-                {mensaje && <div style={{ marginTop: '1rem', fontSize: '1.4rem', color: '#c0392b' }}>{mensaje}</div>}
+                {mensaje && (
+                  <div style={{
+                    marginTop: '1rem',
+                    fontSize: '1.4rem',
+                    color: mensajeTipo === 'success' ? '#1e7e34' : '#c0392b',
+                  }}>
+                    {mensaje}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Listado de Facturas Encontradas */}
             {facturas.length > 0 && (
               <div className="card" style={{ marginTop: '1.5rem' }}>
                 <div className="card-body">
@@ -171,8 +214,8 @@ export default function PagosPage() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 600 }}>${f.monto.toLocaleString('es-CO')}</span>
-                          {f.estado === 'PENDIENTE' ? (
+                          <span style={{ fontWeight: 600 }}>${Number(f.monto).toLocaleString('es-CO')}</span>
+                          {String(f.estado).toUpperCase() === 'PENDIENTE' ? (
                             <button type="button" className="btn" onClick={() => abrirModalPago(f)}>Pagar online</button>
                           ) : (
                             <span style={{ padding: '.4rem .8rem', background: '#4CAF50', color: '#fff', borderRadius: '4px', fontSize: '1.2rem' }}>Pagada</span>
@@ -186,7 +229,6 @@ export default function PagosPage() {
               </div>
             )}
 
-            {/* Detalle factura seleccionada */}
             {detalleFactura && (
               <div id="facturaDetalleCard" className="card" style={{ marginTop: '1.5rem' }}>
                 <div className="card-body">
@@ -194,7 +236,7 @@ export default function PagosPage() {
                   <div id="facturaDetalleBody" style={{ fontSize: '1.35rem', lineHeight: '1.8' }}>
                     <p><strong>ID Factura:</strong> {detalleFactura.id_factura}</p>
                     <p><strong>ID Usuario:</strong> {clienteId}</p>
-                    <p><strong>Monto:</strong> ${detalleFactura.monto.toLocaleString('es-CO')}</p>
+                    <p><strong>Monto:</strong> ${Number(detalleFactura.monto).toLocaleString('es-CO')}</p>
                     <p><strong>Fecha de vencimiento:</strong> {detalleFactura.fecha_vencimiento}</p>
                     <p><strong>Estado:</strong> {detalleFactura.estado}</p>
                   </div>
@@ -202,7 +244,6 @@ export default function PagosPage() {
               </div>
             )}
 
-            {/* Entidad Pago / Historial */}
             {historialPagos.length > 0 && (
               <div id="historialPagosCard" className="card" style={{ marginTop: '1.5rem' }}>
                 <div className="card-body">
@@ -238,7 +279,6 @@ export default function PagosPage() {
               </div>
             )}
 
-            {/* Modal confirmación antes de pasarela */}
             {mostrarModal && facturaSeleccionada && (
               <div id="overlayConfirmPago" style={{ display: 'flex', position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 999, alignItems: 'center', justifyContent: 'center' }}>
                 <div className="card" style={{ maxWidth: '420px', margin: '2rem', position: 'relative', zIndex: 1000, background: '#fff' }}>
@@ -246,14 +286,31 @@ export default function PagosPage() {
                     <h3 style={{ marginBottom: '1rem' }}>Confirmar pago</h3>
                     <p id="confirmPagoTexto" style={{ fontSize: '1.3rem', marginBottom: '1rem' }}>
                       <strong>Factura:</strong> #{facturaSeleccionada.id_factura}<br />
-                      <strong>Monto:</strong> ${facturaSeleccionada.monto.toLocaleString('es-CO')} COP
+                      <strong>Monto:</strong> ${Number(facturaSeleccionada.monto).toLocaleString('es-CO')} COP
                     </p>
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ fontSize: '1.3rem', display: 'block', marginBottom: '.5rem' }}>Método de pago</label>
+                      <select
+                        className="box"
+                        value={metodoPago}
+                        onChange={(e) => setMetodoPago(e.target.value)}
+                        style={{ width: '100%' }}
+                        disabled={pagando}
+                      >
+                        <option value="transferencia">Transferencia</option>
+                        <option value="tarjeta_credito">Tarjeta crédito</option>
+                        <option value="tarjeta_debito">Tarjeta débito</option>
+                        <option value="paypal">PayPal</option>
+                      </select>
+                    </div>
                     <p className="muted" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>
-                      Al confirmar se enviarán el ID de factura y el monto a Mercado Pago de forma segura (HTTPS).
+                      Al confirmar se registrará el pago en la base de datos y la factura pasará a estado <strong>PAGADA</strong>.
                     </p>
                     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                      <button type="button" id="confirmPagoSi" className="btn" onClick={confirmarYContinuarPago}>Confirmar y continuar</button>
-                      <button type="button" id="confirmPagoNo" className="btn" onClick={() => setMostrarModal(false)} style={{ background: 'var(--light-color)' }}>Cancelar</button>
+                      <button type="button" id="confirmPagoSi" className="btn" onClick={confirmarYContinuarPago} disabled={pagando}>
+                        {pagando ? 'Procesando…' : 'Confirmar pago'}
+                      </button>
+                      <button type="button" id="confirmPagoNo" className="btn" onClick={() => setMostrarModal(false)} style={{ background: 'var(--light-color)' }} disabled={pagando}>Cancelar</button>
                     </div>
                   </div>
                 </div>

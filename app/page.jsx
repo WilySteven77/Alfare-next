@@ -341,7 +341,7 @@ export default function HomePage() {
             <div className="content">
               <div className="info">
                 <h3>Pagos en Línea</h3>
-                <p>Muy pronto podrás realizar tus pagos de manera rápida y segura desde internet.</p>
+                <p>Realiza tus pagos de manera rápida y segura desde internet.</p>
               </div>
               <i className="fas fa-plus"></i>
             </div>

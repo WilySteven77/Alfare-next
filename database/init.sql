@@ -292,9 +292,25 @@ CREATE OR REPLACE PROCEDURE pagar_factura(
 )
 LANGUAGE plpgsql
 AS $$
+DECLARE
+    v_estado VARCHAR(50);
+    v_monto NUMERIC(15,2);
 BEGIN
+    SELECT estado, monto INTO v_estado, v_monto
+    FROM Facturas
+    WHERE id_factura = p_factura_id
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Factura % no existe', p_factura_id;
+    END IF;
+
+    IF UPPER(v_estado) <> 'PENDIENTE' THEN
+        RAISE EXCEPTION 'La factura % no está PENDIENTE (estado actual: %)', p_factura_id, v_estado;
+    END IF;
+
     INSERT INTO Pagos(monto, metodo_pago, factura_id, estado)
-    VALUES (p_monto, p_metodo_pago, p_factura_id, 'COMPLETADO');
+    VALUES (COALESCE(p_monto, v_monto), p_metodo_pago, p_factura_id, 'COMPLETADO');
 
     UPDATE Facturas
     SET estado = 'PAGADA'

@@ -2,18 +2,22 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { getFacturasByCliente, getPagosPorUsuarioPublico, createPqrs } from '@/lib/alfaredApi';
+import { getFacturasByCliente, getPagosPorUsuarioPublico, createPqrs, pagarFactura } from '@/lib/alfaredApi';
 
 export default function UsuariosPage() {
   // Estados para búsqueda de factura
   const [searchCustomerId, setSearchCustomerId] = useState('');
   const [searchContract, setSearchContract] = useState('');
   const [invoiceResult, setInvoiceResult] = useState('');
+  const [facturaPendiente, setFacturaPendiente] = useState(null);
 
   // Estados para pago
+  const [payFacturaId, setPayFacturaId] = useState('');
   const [payCustomerId, setPayCustomerId] = useState('');
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('');
+  const [payResult, setPayResult] = useState('');
+  const [pagando, setPagando] = useState(false);
 
   // Estados para historial
   const [historyCustomerId, setHistoryCustomerId] = useState('');
@@ -34,6 +38,7 @@ export default function UsuariosPage() {
       return;
     }
     setInvoiceResult(`Buscando factura para el ID Cliente: ${searchCustomerId}...`);
+    setFacturaPendiente(null);
 
     try {
       const res = await getFacturasByCliente(searchCustomerId);
@@ -54,8 +59,16 @@ export default function UsuariosPage() {
         if (data.length === 0) {
           setInvoiceResult('No hay facturas registradas para este usuario.');
         } else {
-          const f = data[0];
-          setInvoiceResult(`Factura #${f.id_factura || f.id} — Estado: ${(f.estado || '').toUpperCase()} — Monto: $${Number(f.monto).toLocaleString('es-CO')} COP (Vence: ${f.fecha_vencimiento})`);
+          const pendiente = data.find((f) => String(f.estado).toUpperCase() === 'PENDIENTE') || data[0];
+          setInvoiceResult(
+            `Factura #${pendiente.id_factura || pendiente.id} — Estado: ${(pendiente.estado || '').toUpperCase()} — Monto: $${Number(pendiente.monto).toLocaleString('es-CO')} COP (Vence: ${pendiente.fecha_vencimiento})`
+          );
+          if (String(pendiente.estado).toUpperCase() === 'PENDIENTE') {
+            setFacturaPendiente(pendiente);
+            setPayFacturaId(String(pendiente.id_factura));
+            setPayCustomerId(String(searchCustomerId));
+            setPayAmount(String(pendiente.monto));
+          }
         }
       } else {
         setInvoiceResult(res.error || 'No se pudieron cargar las facturas.');
@@ -73,9 +86,45 @@ export default function UsuariosPage() {
     alert(`Descargando factura del cliente #${searchCustomerId}...`);
   };
 
-  const handlePayment = (e) => {
+  const handlePayment = async (e) => {
     e.preventDefault();
-    alert(`Procesando pago de $${payAmount} COP para el cliente #${payCustomerId} mediante ${payMethod}...`);
+    if (!payFacturaId) {
+      setPayResult('Ingresa el ID de la factura a pagar (búscala primero a la izquierda).');
+      return;
+    }
+    if (!payMethod) {
+      setPayResult('Selecciona un método de pago.');
+      return;
+    }
+    setPagando(true);
+    setPayResult('Procesando pago...');
+    try {
+      const res = await pagarFactura(Number(payFacturaId), payMethod);
+      if (res && res.success) {
+        const f = res.data?.factura;
+        setPayResult(
+          res.message ||
+            `Pago exitoso. Factura #${f?.id_factura || payFacturaId} quedó ${f?.estado || 'PAGADA'}.`
+        );
+        setFacturaPendiente(null);
+        if (payCustomerId || searchCustomerId) {
+          const uid = payCustomerId || searchCustomerId;
+          const facturasRes = await getFacturasByCliente(uid);
+          if (facturasRes?.success && Array.isArray(facturasRes.data) && facturasRes.data[0]) {
+            const f0 = facturasRes.data[0];
+            setInvoiceResult(
+              `Factura #${f0.id_factura} — Estado: ${(f0.estado || '').toUpperCase()} — Monto: $${Number(f0.monto).toLocaleString('es-CO')} COP`
+            );
+          }
+        }
+      } else {
+        setPayResult(res?.error || 'No se pudo registrar el pago.');
+      }
+    } catch (_) {
+      setPayResult('Error de red al registrar el pago.');
+    } finally {
+      setPagando(false);
+    }
   };
 
   const handleHistorySearch = async (e) => {
@@ -212,10 +261,22 @@ export default function UsuariosPage() {
           <div className="content" style={{ flex: '1 1 41rem' }}>
             <h3>Pagar tu factura</h3>
             <p style={{ fontSize: '1.4rem', color: '#666', lineHeight: '2', padding: '1rem 0' }}>
-              Debes iniciar sesión para continuar con el pago.
+              Busca tu factura a la izquierda; el ID y monto se rellenan solos si hay una pendiente. El pago se registra en la base de datos.
             </p>
             <form onSubmit={handlePayment} className="payment-form" style={{ background: '#fff', padding: '2rem', border: '1px solid #ddd', boxShadow: '0 .5rem 1rem rgba(0,0,0,.1)', borderRadius: '1rem' }}>
               <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '1rem' }}>
+                <div>
+                  <label style={{ fontSize: '1.4rem', display: 'block', marginBottom: '.5rem' }}>ID Factura</label>
+                  <input 
+                    type="number" 
+                    className="box" 
+                    placeholder="Ej: 1" 
+                    value={payFacturaId}
+                    onChange={(e) => setPayFacturaId(e.target.value)}
+                    required 
+                    style={{ width: '100%', padding: '1rem', border: '1px solid #ccc', borderRadius: '.5rem' }}
+                  />
+                </div>
                 <div>
                   <label style={{ fontSize: '1.4rem', display: 'block', marginBottom: '.5rem' }}>ID Cliente</label>
                   <input 
@@ -224,7 +285,6 @@ export default function UsuariosPage() {
                     placeholder="Ej: 101" 
                     value={payCustomerId}
                     onChange={(e) => setPayCustomerId(e.target.value)}
-                    required 
                     style={{ width: '100%', padding: '1rem', border: '1px solid #ccc', borderRadius: '.5rem' }}
                   />
                 </div>
@@ -237,7 +297,7 @@ export default function UsuariosPage() {
                     placeholder="Ej: 65000" 
                     value={payAmount}
                     onChange={(e) => setPayAmount(e.target.value)}
-                    required 
+                    readOnly={!!facturaPendiente}
                     style={{ width: '100%', padding: '1rem', border: '1px solid #ccc', borderRadius: '.5rem' }}
                   />
                 </div>
@@ -259,8 +319,11 @@ export default function UsuariosPage() {
                 </div>
               </div>
               <div style={{ marginTop: '1rem' }}>
-                <button type="submit" className="btn" style={{ padding: '1rem 2rem', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '.5rem', cursor: 'pointer' }}>Pagar ahora</button>
+                <button type="submit" className="btn" disabled={pagando} style={{ padding: '1rem 2rem', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '.5rem', cursor: 'pointer' }}>
+                  {pagando ? 'Procesando…' : 'Pagar ahora'}
+                </button>
               </div>
+              {payResult && <div style={{ marginTop: '1rem', fontSize: '1.4rem', color: '#333' }}>{payResult}</div>}
             </form>
 
             <h3 style={{ marginTop: '2rem' }}>Historial de pagos</h3>

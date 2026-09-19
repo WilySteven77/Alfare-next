@@ -246,6 +246,74 @@ async function handleRequest(req, slug) {
       });
     }
 
+    // Pago real: invoca el procedimiento pagar_factura (inserta Pagos + marca Factura PAGADA)
+    if (path[0] === 'pagos' && path.length === 1 && method === 'POST') {
+      const body = await parseBody(req);
+      const facturaId = Number(body.factura_id);
+      const metodoPago = String(body.metodo_pago || 'transferencia').trim().slice(0, 50);
+
+      if (!facturaId || Number.isNaN(facturaId)) {
+        return json({ success: false, error: 'factura_id es obligatorio', code: 'VALIDATION_ERROR' }, 400);
+      }
+      if (!metodoPago) {
+        return json({ success: false, error: 'metodo_pago es obligatorio', code: 'VALIDATION_ERROR' }, 400);
+      }
+
+      const facturaRes = await query('SELECT * FROM Facturas WHERE id_factura = $1', [facturaId]);
+      const facturaRow = facturaRes.rows[0];
+      if (!facturaRow) {
+        return json({ success: false, error: 'Factura no encontrada', code: 'FACTURA_NOT_FOUND' }, 404);
+      }
+      if (String(facturaRow.estado).toUpperCase() !== 'PENDIENTE') {
+        return json({
+          success: false,
+          error: `La factura ya está en estado ${facturaRow.estado}. Solo se pueden pagar facturas PENDIENTE.`,
+          code: 'FACTURA_NO_PENDIENTE',
+        }, 409);
+      }
+
+      const monto = Number(facturaRow.monto);
+      await query('CALL pagar_factura($1::int, $2::numeric, $3::varchar)', [
+        facturaId,
+        monto,
+        metodoPago,
+      ]);
+
+      const pagoRes = await query(
+        `SELECT p.id_pago, p.factura_id, f.usuario_id, p.monto, p.estado, p.metodo_pago, p.fecha_pago
+         FROM Pagos p
+         JOIN Facturas f ON f.id_factura = p.factura_id
+         WHERE p.factura_id = $1
+         ORDER BY p.fecha_pago DESC
+         LIMIT 1`,
+        [facturaId]
+      );
+      const pagoRow = pagoRes.rows[0];
+
+      if (pagoRow) {
+        await query(
+          `INSERT INTO PortalPagos (pago_id, usuario_id, resultado, mensaje)
+           VALUES ($1, $2, 'OK', $3)`,
+          [pagoRow.id_pago, facturaRow.usuario_id, `Pago ${metodoPago} registrado`]
+        );
+      }
+
+      const facturaActualizada = await query(
+        `SELECT id_factura, usuario_id, monto, fecha_emision, fecha_vencimiento, estado
+         FROM Facturas WHERE id_factura = $1`,
+        [facturaId]
+      );
+
+      return json({
+        success: true,
+        data: {
+          pago: pagoRow ? mapPago(pagoRow) : null,
+          factura: mapFactura(facturaActualizada.rows[0]),
+        },
+        message: 'Pago registrado correctamente. La factura quedó PAGADA.',
+      }, 201);
+    }
+
     if (path[0] === 'pagos' && path[1] && method === 'GET') {
       const usuarioId = Number(path[1]);
       const user = await getUsuarioPorId(usuarioId);
