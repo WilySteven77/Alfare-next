@@ -1,8 +1,16 @@
 name: alfared-${APP_ENV:-dev}
 
+# Configuración global de logs para evitar llenar el disco del servidor
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   alfared-database:
     image: postgres:16-alpine
+    restart: unless-stopped
     networks:
       - alfa-network
     env_file:
@@ -16,14 +24,21 @@ services:
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
 
   alfared-backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    restart: unless-stopped
     depends_on:
       alfared-database:
         condition: service_healthy
@@ -32,7 +47,6 @@ services:
     env_file:
       - ${ENV_FILE:-.env.dev}
     environment:
-      # CAMBIO AQUÍ: Reemplaza host.docker.internal por alfared-database
       DB_HOST: ${DB_HOST:-alfared-database} 
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER}
@@ -42,9 +56,16 @@ services:
       PORT: ${PUERTO_BACKEND_CONTENEDOR}
       NODE_ENV: ${NODE_ENV:-production}
       APP_URL: ${APP_URL}
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
 
   alfared-frontend:
     build: ./frontend
+    restart: unless-stopped
     depends_on:
       - alfared-backend
     ports:
@@ -53,6 +74,12 @@ services:
       - alfa-network
     env_file:
       - ${ENV_FILE:-.env.dev}
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
 networks:
   alfa-network:
