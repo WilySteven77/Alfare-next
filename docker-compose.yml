@@ -69,7 +69,7 @@ services:
     depends_on:
       - alfared-backend
     ports:
-      - "${PUERTO_FRONTEND_HOST:-127.0.0.1:80}:${PUERTO_FRONTEND_CONTENEDOR}"
+      - "${PUERTO_FRONTEND_HOST:-127.0.0.1:8081}:${PUERTO_FRONTEND_CONTENEDOR}"
     networks:
       - alfa-network
     env_file:
