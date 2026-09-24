@@ -27,18 +27,21 @@ jobs:
           fi
           echo "Rama $BRANCH -> archivo de entorno"
       - name: executing remote ssh commands using ssh
-        # Permite definir un ssh-action para ejecutar comandos remotos en un servidor a través de SSH
         uses: appleboy/ssh-action@v1.0.0
+        env:
+          ENV_FILE: ${{ env.ENV_FILE }}
+          APP_ENV: ${{ env.APP_ENV }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          envs: ENV_FILE,APP_ENV
           script: |
             cd /root/admin/home/projects/victor/Alfare-next
             git fetch
-            git checkout ${{ secrets.DEV_BRANCH}}
-            git pull origin ${{ secrets.DEV_BRANCH}}
+            git checkout ${{ secrets.DEV_BRANCH }}
+            git pull origin ${{ secrets.DEV_BRANCH }}
             docker compose --env-file "${ENV_FILE}" up --build
             exit
