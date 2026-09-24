@@ -38,7 +38,7 @@ jobs:
           script: |
             cd /root/admin/home/projects/victor/Alfare-next
             git fetch
-            git checkout ${{ secrets.MAIN_BRANCH}}
-            git pull origin ${{ secrets.MAIN_BRANCH}}
+            git checkout ${{ secrets.DEV_BRANCH}}
+            git pull origin ${{ secrets.DEV_BRANCH}}
             docker compose --env-file "${ENV_FILE}" up --build
             exit
