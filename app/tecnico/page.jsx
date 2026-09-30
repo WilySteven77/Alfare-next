@@ -35,43 +35,51 @@ export default function TecnicoPage() {
   const [searchResults, setSearchResults] = useState([]);
 
   // Carga inicial de usuarios
-  // Carga inicial de usuarios desde la base de datos/backend
   useEffect(() => {
-    const fetchUsuarios = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch('/api/tecnico');
-        if (!response.ok) throw new Error('Error de red');
-        
-        const data = await response.json();
-        
-        // Ajustamos la respuesta del backend a un arreglo plano para la tabla
-        const usuariosCargados = [
-          ...(data.instalaciones || []), 
-          ...(data.servicios || []), 
-          ...(data.danos || [])
-        ].map((item, index) => ({
-          id: index + 1,
-          nombre: item.nombre,
-          cedula: item.titular || 'N/A', // Mapeo de titular a cédula
-          email: 'correo@ejemplo.com',
-          telefono: 'N/A',
-          direccion: item.ubicacion || 'N/A',
-          tipoServicio: item.tipoIncidencia === 'Instalación' ? 'internet' : 'tecnologia',
+    setLoading(true);
+    setTimeout(() => {
+      const initialUsers = [
+        {
+          id: 1,
+          nombre: 'Juan Pérez',
+          cedula: '12345678',
+          email: 'juan@email.com',
+          telefono: '3001234567',
+          direccion: 'Calle 123 #45-67',
+          tipoServicio: 'internet',
+          observaciones: 'Cliente preferencial',
           estado: 'activo',
-          observaciones: item.descripcion
-        }));
-
-        setUsers(usuariosCargados);
-        setFilteredUsers(usuariosCargados);
-      } catch (error) {
-        showMessage('error', 'Error al cargar los usuarios del servidor');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUsuarios();
+          fechaRegistro: new Date().toISOString()
+        },
+        {
+          id: 2,
+          nombre: 'María García',
+          cedula: '87654321',
+          email: 'maria@email.com',
+          telefono: '3007654321',
+          direccion: 'Carrera 45 #123-89',
+          tipoServicio: 'television',
+          observaciones: '',
+          estado: 'activo',
+          fechaRegistro: new Date().toISOString()
+        },
+        {
+          id: 3,
+          nombre: 'Carlos López',
+          cedula: '11223344',
+          email: 'carlos@email.com',
+          telefono: '3009988776',
+          direccion: 'Avenida 30 #67-89',
+          tipoServicio: 'tecnologia',
+          observaciones: 'Requiere soporte técnico',
+          estado: 'inactivo',
+          fechaRegistro: new Date().toISOString()
+        }
+      ];
+      setUsers(initialUsers);
+      setFilteredUsers(initialUsers);
+      setLoading(false);
+    }, 800);
   }, []);
 
   // Búsqueda en tiempo real en la tabla
@@ -104,44 +112,30 @@ export default function TecnicoPage() {
     return labels[type] || type;
   };
 
-  const handleCreateUser = async (e) => {
+  const handleCreateUser = (e) => {
     e.preventDefault();
-    
-    // Adaptamos los datos del formulario a lo que espera el controlador
-    const payload = {
-      nombre: formData.nombre,
-      titular: formData.cedula,
-      tipoIncidencia: formData.tipoServicio === 'internet' ? 'Servicio' : 'Instalación',
-      tipoPrioridad: "Media",
-      descripcion: formData.observaciones || 'Sin observaciones',
-      ubicacion: formData.direccion
+    if (users.some(u => u.cedula === formData.cedula)) {
+      showMessage('error', 'Ya existe un usuario con esta cédula');
+      return;
+    }
+    if (users.some(u => u.email === formData.email)) {
+      showMessage('error', 'Ya existe un usuario con este email');
+      return;
+    }
+
+    const newUser = {
+      id: users.length > 0 ? Math.max(...users.map(u => u.id)) + 1 : 1,
+      ...formData,
+      estado: 'activo',
+      fechaRegistro: new Date().toISOString()
     };
 
-    try {
-      const response = await fetch('/api/tecnico', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        showMessage('error', data.error || 'Error al crear el registro');
-        return;
-      }
-
-      showMessage('success', 'Usuario creado exitosamente en el servidor');
-      setActiveModal(null);
-      setFormData({ nombre: '', cedula: '', email: '', telefono: '', direccion: '', tipoServicio: '', observaciones: '' });
-      
-      // Recargar la página para ver el nuevo registro (o podrías volver a llamar al fetch)
-      window.location.reload();
-
-    } catch (error) {
-      showMessage('error', 'Error de conexión con el servidor');
-    }
+    setUsers(prev => [...prev, newUser]);
+    setActiveModal(null);
+    setFormData({ nombre: '', cedula: '', email: '', telefono: '', direccion: '', tipoServicio: '', observaciones: '' });
+    showMessage('success', 'Usuario creado exitosamente');
   };
+
   const handleEditUser = (e) => {
     e.preventDefault();
     if (users.some(u => u.cedula === formData.cedula && u.id !== currentUser.id)) {
