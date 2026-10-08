@@ -112,7 +112,7 @@ export default function PqrsGestionPage() {
                   <h1 className="heading">Acceso personal</h1>
                   <p className="muted" style={{ fontSize: '1.4rem' }}>
                     Inicia sesión con una cuenta de administrador, contador o técnico para ver todas las PQRS, tomar casos y cerrar con respuesta final.
-                    También puedes entrar desde <Link href="/cuenta">Mi cuenta</Link>. Tras ejecutar <code>npm run seed</code> en el proyecto, usa las cuentas demo (admin / técnico / contador) indicadas en esa página.
+                    También puedes entrar desde <Link href="/cuenta">Mi cuenta</Link>. Tras ejecutar <code>npm run seed</code> en el proyecto, usa las cuentas demo (admin / técnico / contador) indicadas en esa página;
                   </p>
                   <form onSubmit={handleLogin} id="staffLoginForm" style={{ marginTop: '1rem', maxWidth: '400px' }}>
                     <label style={{ display: 'block', marginBottom: '.3rem' }}>Correo</label>
