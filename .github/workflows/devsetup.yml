@@ -1,17 +1,16 @@
 name: Deploy por entorno
 
 on:
-  push:
-    branches: [develop, test, main]
+  push: 
+    branches:
+      - dev
   workflow_dispatch:
 
 jobs:
   deploy:
+    name: run pull
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Elegir archivo de entorno segun la rama
         shell: bash
         run: |
@@ -27,6 +26,22 @@ jobs:
             echo "APP_ENV=dev" >> "$GITHUB_ENV"
           fi
           echo "Rama $BRANCH -> archivo de entorno"
-
-      - name: Validar Docker Compose
-        run: docker compose --env-file "${ENV_FILE}" config
+      - name: executing remote ssh commands using ssh
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          ENV_FILE: ${{ env.ENV_FILE }}
+          APP_ENV: ${{ env.APP_ENV }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: ENV_FILE,APP_ENV
+          script: |
+            cd /root/admin/home/projects/victor/Alfare-next
+            git fetch
+            git checkout ${{ secrets.DEV_BRANCH }}
+            git pull origin ${{ secrets.DEV_BRANCH }}
+            docker compose --env-file "${ENV_FILE}" up --build -d
+            exit
