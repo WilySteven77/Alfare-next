@@ -64,7 +64,7 @@ services:
           memory: 1G
 
   alfared-frontend:
-    build: ./frontend/Dockerfile
+    build: ./frontend
     restart: unless-stopped
     depends_on:
       - alfared-backend
