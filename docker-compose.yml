@@ -37,7 +37,7 @@ services:
   alfared-backend:
     build:
       context: .
-      dockerfile: backend
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     depends_on:
       alfared-database:
