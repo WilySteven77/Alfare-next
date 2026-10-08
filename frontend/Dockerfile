@@ -1,11 +1,5 @@
-FROM nginx:1.25-alpine
-# Eliminar la configuración por defecto antes de copiar la propia
-RUN rm /etc/nginx/conf.d/default.conf
+FROM nginxinc/nginx-unprivileged:1.25-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Ajustar permisos para que el usuario sin privilegios pueda ejecutarse
-RUN chown -R nginx:nginx /var/cache/nginx /var/run /var/log/nginx
-USER nginx
-
-EXPOSE 80
+EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]
