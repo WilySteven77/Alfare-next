@@ -172,18 +172,6 @@ export default function PqrsPage() {
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: '1.4rem', display: 'block', marginBottom: '.5rem' }}>Nombre completo2</label>
-                      <input 
-                        type="text" 
-                        id="pqrsName2" 
-                        className="box" 
-                        placeholder="Tu nombre" 
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required 
-                      />
-                    </div>
-                    <div>
                       <label style={{ fontSize: '1.4rem', display: 'block', marginBottom: '.5rem' }}>Correo</label>
                       <input 
                         type="email" 
