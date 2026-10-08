@@ -188,7 +188,7 @@ export default function PqrsGestionPage() {
                           </tbody>
                         </table>
                       ) : (
-                        <p className="muted">No hay PQRS registradas en la bandeja.</p>
+                        <p className="muted">No hay PQRS registradas en la bandeja. </p>
                       )}
                     </div>
                   </div>
