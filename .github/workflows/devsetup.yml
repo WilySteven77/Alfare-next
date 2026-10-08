@@ -43,5 +43,5 @@ jobs:
             git fetch
             git checkout ${{ secrets.DEV_BRANCH }}
             git pull origin ${{ secrets.DEV_BRANCH }}
-            docker compose --env-file "${ENV_FILE}" up --build
+            docker compose --env-file "${ENV_FILE}" up --build -d
             exit
