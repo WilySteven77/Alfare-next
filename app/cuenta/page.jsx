@@ -11,19 +11,10 @@ export default function CuentaPage() {
   const [regApellido, setRegApellido] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPass, setRegPass] = useState('');
-  const [sesionActiva, setSesionActiva] = useState(false);
-  const [usuario, setUsuario] = useState(null);
+  const [sesionActiva, setSesionActiva] = useState(() => typeof window !== 'undefined' && Boolean(getToken() && getStoredUsuario()));
+  const [usuario, setUsuario] = useState(() => typeof window !== 'undefined' ? getStoredUsuario() : null);
   const [loginMsg, setLoginMsg] = useState('');
   const [regMsg, setRegMsg] = useState('');
-
-  useEffect(() => {
-    const u = getStoredUsuario();
-    const token = getToken();
-    if (token && u) {
-      setUsuario(u);
-      setSesionActiva(true);
-    }
-  }, []);
 
   useEffect(() => {
     const sync = async () => {
@@ -109,6 +100,7 @@ export default function CuentaPage() {
                 </p>
                 <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                   <Link id="linkGestion" href="/pqrs-gestion" className="btn" style={{ display: staffPuedeGestion(usuario?.tipo) ? 'inline-block' : 'none' }}>Ir a gestión PQRS</Link>
+                  {usuario?.tipo?.toLowerCase() === 'tecnico' && <Link href="/tecnico" className="btn">Gestión técnica</Link>}
                   <button type="button" id="btnCerrarSesion" className="btn" onClick={handleLogout}>Cerrar sesión</button>
                 </div>
                 <p className="muted" style={{ fontSize: '1.2rem', marginTop: '1rem' }}>
