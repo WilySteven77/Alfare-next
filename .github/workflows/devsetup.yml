@@ -66,6 +66,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          command_timeout: 30m
           envs: ENV_FILE,APP_ENV
           script: |
             set -e
