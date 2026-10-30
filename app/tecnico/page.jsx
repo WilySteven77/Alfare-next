@@ -1,533 +1,323 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { apiFetch, getStoredUsuario, refreshSessionFromServer } from '@/lib/alfaredApi';
+
+const EMPTY_FORM = {
+  nombre_completo: '',
+  cedula: '',
+  email: '',
+  telefono: '',
+  direccion: '',
+  tipo_servicio: '',
+  observaciones: '',
+};
+
+const SERVICE_LABELS = {
+  INTERNET: 'Internet',
+  TELEVISION: 'Televisión',
+  TECNOLOGIA: 'Tecnología',
+  ELECTRICO: 'Servicios Eléctricos',
+};
+
+const INCIDENT_TYPES = { INSTALACION: 'Instalación', SERVICIO: 'Servicio', DANO: 'Daño' };
+const PRIORITY_LABELS = { ALTA: 'Alta', MEDIA: 'Media', BAJA: 'Baja' };
+
+function normalizeUser(row) {
+  return {
+    ...row,
+    id: row.id_cliente,
+    nombre: row.nombre_completo,
+    tipoServicio: row.tipo_servicio,
+    estado: row.activo ? 'activo' : 'inactivo',
+  };
+}
 
 export default function TecnicoPage() {
+  const router = useRouter();
   const [users, setUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [generalSearchInput, setGeneralSearchInput] = useState('');
+  const [authorized, setAuthorized] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [editingId, setEditingId] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [incidents, setIncidents] = useState([]);
+  const [incidentType, setIncidentType] = useState('TODAS');
+  const [incidentLoading, setIncidentLoading] = useState(false);
+  const [incidentForm, setIncidentForm] = useState({ cliente_id: '', titular: '', tipo: 'INSTALACION', prioridad: 'MEDIA', descripcion: '', ubicacion: '' });
 
-  // Modales
-  const [activeModal, setActiveModal] = useState(null); // 'create', 'search', 'edit', 'view', 'delete'
-  const [currentUser, setCurrentUser] = useState(null);
-  
-  // Mensajes de alerta temporales
-  const [messages, setMessages] = useState([]);
+  const visibleUsers = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return users;
+    return users.filter((user) => [
+      user.nombre_completo,
+      user.cedula,
+      user.email,
+      user.telefono,
+    ].some((value) => String(value || '').toLowerCase().includes(term)));
+  }, [query, users]);
 
-  // Estados de formularios
-  const [formData, setFormData] = useState({
-    nombre: '',
-    cedula: '',
-    email: '',
-    telefono: '',
-    direccion: '',
-    tipoServicio: '',
-    observaciones: ''
-  });
-
-  const [searchCriteria, setSearchCriteria] = useState({
-    searchType: 'nombre',
-    searchTerm: ''
-  });
-  const [searchResults, setSearchResults] = useState([]);
-
-  // Carga inicial de usuarios
-  // Carga inicial de usuarios desde la base de datos/backend
-  useEffect(() => {
-    const fetchUsuarios = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch('/api/tecnico');
-        if (!response.ok) throw new Error('Error de red');
-        
-        const data = await response.json();
-        
-        // Ajustamos la respuesta del backend a un arreglo plano para la tabla
-        const usuariosCargados = [
-          ...(data.instalaciones || []), 
-          ...(data.servicios || []), 
-          ...(data.danos || [])
-        ].map((item, index) => ({
-          id: index + 1,
-          nombre: item.nombre,
-          cedula: item.titular || 'N/A', // Mapeo de titular a cédula
-          email: 'correo@ejemplo.com',
-          telefono: 'N/A',
-          direccion: item.ubicacion || 'N/A',
-          tipoServicio: item.tipoIncidencia === 'Instalación' ? 'internet' : 'tecnologia',
-          estado: 'activo',
-          observaciones: item.descripcion
-        }));
-
-        setUsers(usuariosCargados);
-        setFilteredUsers(usuariosCargados);
-      } catch (error) {
-        showMessage('error', 'Error al cargar los usuarios del servidor');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUsuarios();
-  }, []);
-
-  // Búsqueda en tiempo real en la tabla
-  useEffect(() => {
-    const term = generalSearchInput.toLowerCase();
-    const result = users.filter(user => 
-      user.nombre.toLowerCase().includes(term) ||
-      user.cedula.toLowerCase().includes(term) ||
-      user.email.toLowerCase().includes(term) ||
-      user.telefono.toLowerCase().includes(term)
-    );
-    setFilteredUsers(result);
-  }, [generalSearchInput, users]);
-
-  const showMessage = (type, text) => {
-    const id = Date.now();
-    setMessages(prev => [...prev, { id, type, text }]);
-    setTimeout(() => {
-      setMessages(prev => prev.filter(m => m.id !== id));
-    }, 5000);
+  const loadUsers = async () => {
+    setLoading(true);
+    setError('');
+    const response = await apiFetch('/tecnico/clientes', {
+      __actionLabel: 'Técnico: cargar usuarios de servicio',
+    });
+    if (!response?.success) {
+      setUsers([]);
+      setError(response?.error || 'No fue posible cargar los usuarios de servicio.');
+    } else {
+      setUsers((response.data || []).map(normalizeUser));
+    }
+    setLoading(false);
   };
 
-  const getServiceTypeLabel = (type) => {
-    const labels = {
-      'internet': 'Internet',
-      'television': 'Televisión',
-      'tecnologia': 'Tecnología',
-      'electrico': 'Servicios Eléctricos'
-    };
-    return labels[type] || type;
+  const loadIncidents = async (type = incidentType) => {
+    setIncidentLoading(true);
+    const suffix = type === 'TODAS' ? '' : `?tipo=${type}`;
+    const response = await apiFetch(`/tecnico/incidencias${suffix}`, { __actionLabel: 'Técnico: consultar cola de incidencias' });
+    if (!response?.success) setError(response?.error || 'No fue posible cargar las incidencias.');
+    else setIncidents(response.data || []);
+    setIncidentLoading(false);
   };
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    
-    // Adaptamos los datos del formulario a lo que espera el controlador
-    const payload = {
-      nombre: formData.nombre,
-      titular: formData.cedula,
-      tipoIncidencia: formData.tipoServicio === 'internet' ? 'Servicio' : 'Instalación',
-      tipoPrioridad: "Media",
-      descripcion: formData.observaciones || 'Sin observaciones',
-      ubicacion: formData.direccion
-    };
+  const createIncident = async (event) => {
+    event.preventDefault();
+    const response = await apiFetch('/tecnico/incidencias', { method: 'POST', body: JSON.stringify(incidentForm), __actionLabel: 'Técnico: registrar incidencia' });
+    if (!response?.success) { setError(response?.error || 'No fue posible registrar la incidencia.'); return; }
+    setMessage('Incidencia registrada correctamente.');
+    setIncidentForm({ cliente_id: '', titular: '', tipo: 'INSTALACION', prioridad: 'MEDIA', descripcion: '', ubicacion: '' });
+    await loadIncidents();
+  };
 
-    try {
-      const response = await fetch('/api/tecnico', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+  const takeNextIncident = async (type) => {
+    const response = await apiFetch('/tecnico/incidencias/next', { method: 'POST', body: JSON.stringify({ tipo: type }), __actionLabel: `Técnico: atender siguiente incidencia ${type}` });
+    if (!response?.success) { setError(response?.error || 'No hay incidencias pendientes para atender.'); return; }
+    setMessage(`Incidencia #${response.data.id_incidencia} atendida correctamente.`);
+    await loadIncidents();
+  };
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        showMessage('error', data.error || 'Error al crear el registro');
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const stored = getStoredUsuario();
+      const session = stored ? await refreshSessionFromServer() : null;
+      const current = getStoredUsuario();
+      const isTechnician = Boolean(
+        mounted && session?.success && current?.tipo?.toLowerCase() === 'tecnico'
+      );
+      if (!isTechnician) {
+        router.replace('/cuenta');
         return;
       }
+      setAuthorized(true);
+      await loadUsers();
+      await loadIncidents();
+    })();
+    return () => { mounted = false; };
+    // La carga inicial usa deliberadamente el filtro inicial TODAS.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
 
-      showMessage('success', 'Usuario creado exitosamente en el servidor');
-      setActiveModal(null);
-      setFormData({ nombre: '', cedula: '', email: '', telefono: '', direccion: '', tipoServicio: '', observaciones: '' });
-      
-      // Recargar la página para ver el nuevo registro (o podrías volver a llamar al fetch)
-      window.location.reload();
-
-    } catch (error) {
-      showMessage('error', 'Error de conexión con el servidor');
-    }
+  const openCreate = () => {
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+    setModal('create');
+    setError('');
   };
-  const handleEditUser = (e) => {
-    e.preventDefault();
-    if (users.some(u => u.cedula === formData.cedula && u.id !== currentUser.id)) {
-      showMessage('error', 'Ya existe otro usuario con esta cédula');
+
+  const openEdit = (user) => {
+    setForm({
+      nombre_completo: user.nombre_completo || '',
+      cedula: user.cedula || '',
+      email: user.email || '',
+      telefono: user.telefono || '',
+      direccion: user.direccion || '',
+      tipo_servicio: user.tipo_servicio || '',
+      observaciones: user.observaciones || '',
+    });
+    setEditingId(user.id_cliente);
+    setModal('edit');
+    setError('');
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    const endpoint = editingId ? `/tecnico/clientes/${editingId}` : '/tecnico/clientes';
+    const response = await apiFetch(endpoint, {
+      method: editingId ? 'PATCH' : 'POST',
+      body: JSON.stringify(form),
+      __actionLabel: editingId ? 'Técnico: actualizar usuario de servicio' : 'Técnico: crear usuario de servicio',
+    });
+    if (!response?.success) {
+      setError(response?.error || 'El servidor rechazó la operación.');
       return;
     }
-    if (users.some(u => u.email === formData.email && u.id !== currentUser.id)) {
-      showMessage('error', 'Ya existe otro usuario con este email');
+    setModal(null);
+    setMessage(editingId ? 'Usuario actualizado correctamente.' : 'Usuario creado correctamente.');
+    await loadUsers();
+  };
+
+  const handleDelete = async () => {
+    if (!selected) return;
+    const response = await apiFetch(`/tecnico/clientes/${selected.id_cliente}`, {
+      method: 'DELETE',
+      __actionLabel: 'Técnico: desactivar usuario de servicio',
+    });
+    if (!response?.success) {
+      setError(response?.error || 'No fue posible retirar el usuario.');
       return;
     }
-
-    setUsers(prev => prev.map(u => u.id === currentUser.id ? { ...u, ...formData } : u));
-    setActiveModal(null);
-    showMessage('success', 'Usuario actualizado exitosamente');
+    setSelected(null);
+    setModal(null);
+    setMessage('Usuario retirado del listado operativo.');
+    await loadUsers();
   };
 
-  const confirmDelete = () => {
-    if (!currentUser) return;
-    setUsers(prev => prev.filter(u => u.id !== currentUser.id));
-    setActiveModal(null);
-    setCurrentUser(null);
-    showMessage('success', 'Usuario eliminado exitosamente');
-  };
-
-  const handleSearchModalSubmit = (e) => {
-    e.preventDefault();
-    const term = searchCriteria.searchTerm.toLowerCase();
-    const res = users.filter(user => user[searchCriteria.searchType]?.toLowerCase().includes(term));
-    setSearchResults(res);
-  };
+  if (!authorized) return <main className="container-narrow" style={{ padding: '4rem 1rem' }}>Validando sesión técnica...</main>;
 
   return (
     <>
-      {/* Header */}
       <header className="header">
-        <Link href="/" className="logo">AlfaRed<span> Energia y Telecomunicaciones</span></Link>
-        <nav className="navbar"></nav>
-        <div className="icons">
-          <div id="menu-btn" className="fas fa-bars"></div>
-          <div id="info-btn" className="fas fa-info-circle"></div>
-        </div>
+        <Link href="/" className="logo">AlfaRed<span> Gestión Técnica</span></Link>
+        <nav className="navbar">
+          <Link href="/">Inicio</Link>
+          <Link href="/cuenta">Mi cuenta</Link>
+          <Link href="/tecnico/ordenes">Mis órdenes</Link>
+        </nav>
       </header>
 
-      {/* Main Content */}
-      <div className="tecnico-container" style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <div className="tecnico-header" style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h1><i className="fas fa-tools"></i> Sistema de Gestión de Técnicos</h1>
-          <p className="subtitle" style={{ color: 'var(--light-color)' }}>Gestiona usuarios, servicios y mantenimientos de manera eficiente</p>
+      <main className="container-narrow" style={{ padding: '3rem 1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div>
+            <h1 className="heading">Sistema de Gestión de Técnicos</h1>
+            <p className="muted">Usuarios de servicio registrados en AlfaRed Energía y Telecomunicaciones.</p>
+          </div>
+          <button type="button" className="btn" onClick={openCreate}>Crear usuario</button>
         </div>
 
-        {/* Main Actions */}
-        <div className="main-actions" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
-          <div className="action-card" onClick={() => { setFormData({ nombre: '', cedula: '', email: '', telefono: '', direccion: '', tipoServicio: '', observaciones: '' }); setActiveModal('create'); }} style={{ background: '#fff', padding: '2rem', borderRadius: '1rem', boxShadow: 'var(--box-shadow)', cursor: 'pointer', textAlign: 'center' }}>
-            <i className="fas fa-user-plus" style={{ fontSize: '3rem', color: 'var(--yellow)', marginBottom: '1rem' }}></i>
-            <h3>Crear Usuario</h3>
-            <p style={{ color: 'var(--light-color)', fontSize: '1.2rem' }}>Registra nuevos usuarios en el sistema con todos sus datos personales y de contacto</p>
-          </div>
+        {message && <p role="status" style={{ color: '#187a3d' }}>{message}</p>}
+        {error && <p role="alert" style={{ color: '#b42318' }}>{error}</p>}
 
-          <div className="action-card" onClick={() => setActiveModal('usersList')} style={{ background: '#fff', padding: '2rem', borderRadius: '1rem', boxShadow: 'var(--box-shadow)', cursor: 'pointer', textAlign: 'center' }}>
-            <i className="fas fa-users" style={{ fontSize: '3rem', color: 'var(--yellow)', marginBottom: '1rem' }}></i>
-            <h3>Ver Usuarios Registrados</h3>
-            <p style={{ color: 'var(--light-color)', fontSize: '1.2rem' }}>Consulta la lista completa de usuarios registrados en el sistema</p>
+        <section className="card" style={{ marginTop: '1.5rem' }}>
+          <div className="card-body">
+            <label htmlFor="searchUsers">Buscar por nombre, cédula, correo o teléfono</label>
+            <input id="searchUsers" className="box" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Escribe un término..." />
           </div>
+        </section>
 
-          <div className="action-card" onClick={() => { setSearchResults([]); setSearchCriteria({ searchType: 'nombre', searchTerm: '' }); setActiveModal('search'); }} style={{ background: '#fff', padding: '2rem', borderRadius: '1rem', boxShadow: 'var(--box-shadow)', cursor: 'pointer', textAlign: 'center' }}>
-            <i className="fas fa-search" style={{ fontSize: '3rem', color: 'var(--yellow)', marginBottom: '1rem' }}></i>
-            <h3>Buscar Usuario</h3>
-            <p style={{ color: 'var(--light-color)', fontSize: '1.2rem' }}>Busca usuarios específicos por nombre, cédula o número de contacto</p>
-          </div>
-        </div>
-
-        {/* Users Section (Se muestra si se activa o por defecto) */}
-        <div className="users-section" id="usersSection" style={{ background: '#fff', padding: '2rem', borderRadius: '1rem', boxShadow: 'var(--box-shadow)' }}>
-          <div className="section-header" style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1rem' }}>
-            <i className="fas fa-users"></i> Usuarios Registrados
-          </div>
-          
-          <div className="search-bar" style={{ marginBottom: '1.5rem' }}>
-            <input 
-              type="text" 
-              className="search-input box" 
-              value={generalSearchInput}
-              onChange={(e) => setGeneralSearchInput(e.target.value)}
-              placeholder="Buscar usuarios por nombre, cédula o email..." 
-              style={{ width: '100%', padding: '1rem', border: '1px solid #ccc', borderRadius: '.5rem' }}
-            />
-          </div>
-          
-          {loading ? (
-            <div className="loading active" style={{ textAlign: 'center', padding: '2rem' }}>
-              <div className="spinner"></div>
-              <p>Cargando usuarios...</p>
-            </div>
-          ) : (
-            <div id="usersTableContainer">
-              <table className="users-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '1.2rem' }}>
-                <thead>
-                  <tr style={{ background: '#f5f5f5' }}>
-                    <th style={{ border: '1px solid #ddd', padding: '.8rem' }}>ID</th>
-                    <th style={{ border: '1px solid #ddd', padding: '.8rem' }}>Nombre</th>
-                    <th style={{ border: '1px solid #ddd', padding: '.8rem' }}>Cédula</th>
-                    <th style={{ border: '1px solid #ddd', padding: '.8rem' }}>Email</th>
-                    <th style={{ border: '1px solid #ddd', padding: '.8rem' }}>Teléfono</th>
-                    <th style={{ border: '1px solid #ddd', padding: '.8rem' }}>Tipo de Servicio</th>
-                    <th style={{ border: '1px solid #ddd', padding: '.8rem' }}>Estado</th>
-                    <th style={{ border: '1px solid #ddd', padding: '.8rem' }}>Acciones</th>
-                  </tr>
-                </thead>
+        <section className="card" style={{ marginTop: '1.5rem' }}>
+          <div className="card-body" style={{ overflowX: 'auto' }}>
+            {loading ? <p>Cargando usuarios desde el servidor...</p> : visibleUsers.length === 0 ? <p>No se encontraron usuarios de servicio.</p> : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr>
+                  {['ID', 'Nombre', 'Cédula', 'Email', 'Teléfono', 'Servicio', 'Estado', 'Acciones'].map((title) => <th key={title} style={{ textAlign: 'left', padding: '.7rem', borderBottom: '1px solid #ddd' }}>{title}</th>)}
+                </tr></thead>
                 <tbody>
-                  {filteredUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan="8" style={{ textAlign: 'center', padding: '3rem', color: 'var(--light-color)' }}>No se encontraron usuarios</td>
-                    </tr>
-                  ) : (
-                    filteredUsers.map(user => (
-                      <tr key={user.id}>
-                        <td style={{ border: '1px solid #ddd', padding: '.8rem' }}>{user.id}</td>
-                        <td style={{ border: '1px solid #ddd', padding: '.8rem' }}>{user.nombre}</td>
-                        <td style={{ border: '1px solid #ddd', padding: '.8rem' }}>{user.cedula}</td>
-                        <td style={{ border: '1px solid #ddd', padding: '.8rem' }}>{user.email}</td>
-                        <td style={{ border: '1px solid #ddd', padding: '.8rem' }}>{user.telefono}</td>
-                        <td style={{ border: '1px solid #ddd', padding: '.8rem' }}>{getServiceTypeLabel(user.tipoServicio)}</td>
-                        <td style={{ border: '1px solid #ddd', padding: '.8rem' }}>
-                          <span className={`status ${user.estado}`} style={{ padding: '.3rem .6rem', borderRadius: '4px', background: user.estado === 'activo' ? '#4CAF50' : '#f44336', color: '#fff' }}>{user.estado}</span>
-                        </td>
-                        <td style={{ border: '1px solid #ddd', padding: '.8rem' }}>
-                          <div className="action-buttons" style={{ display: 'flex', gap: '.5rem' }}>
-                            <button className="btn-action btn-view" onClick={() => { setCurrentUser(user); setActiveModal('view'); }} title="Ver" style={{ padding: '.4rem .8rem', background: '#3137fd', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                              <i className="fas fa-eye"></i>
-                            </button>
-                            <button className="btn-action btn-edit" onClick={() => { setCurrentUser(user); setFormData(user); setActiveModal('edit'); }} title="Editar" style={{ padding: '.4rem .8rem', background: '#ff9800', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                              <i className="fas fa-edit"></i>
-                            </button>
-                            <button className="btn-action btn-delete" onClick={() => { setCurrentUser(user); setActiveModal('delete'); }} title="Eliminar" style={{ padding: '.4rem .8rem', background: '#f44336', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                              <i className="fas fa-trash"></i>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  {visibleUsers.map((user) => <tr key={user.id_cliente}>
+                    <td style={{ padding: '.7rem' }}>{user.id_cliente}</td>
+                    <td style={{ padding: '.7rem' }}>{user.nombre_completo}</td>
+                    <td style={{ padding: '.7rem' }}>{user.cedula}</td>
+                    <td style={{ padding: '.7rem' }}>{user.email}</td>
+                    <td style={{ padding: '.7rem' }}>{user.telefono}</td>
+                    <td style={{ padding: '.7rem' }}>{SERVICE_LABELS[user.tipo_servicio] || user.tipo_servicio}</td>
+                    <td style={{ padding: '.7rem' }}>{user.activo ? 'Activo' : 'Inactivo'}</td>
+                    <td style={{ padding: '.7rem', whiteSpace: 'nowrap' }}>
+                      <button type="button" className="btn" onClick={() => { setSelected(user); setModal('view'); }}>Ver</button>{' '}
+                      <button type="button" className="btn" onClick={() => openEdit(user)}>Editar</button>{' '}
+                      <button type="button" className="btn" onClick={() => { setSelected(user); setModal('delete'); }}>Retirar</button>
+                    </td>
+                  </tr>)}
                 </tbody>
               </table>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </section>
 
-        {/* Messages Container */}
-        <div id="messagesContainer" style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 1100 }}>
-          {messages.map(msg => (
-            <div key={msg.id} className={`message ${msg.type}`} style={{ background: msg.type === 'success' ? '#4CAF50' : '#f44336', color: '#fff', padding: '1rem 2rem', borderRadius: '.5rem', marginBottom: '.5rem', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', fontSize: '1.2rem' }}>
-              {msg.text}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* --- MODALES --- */}
-
-      {/* Create User Modal */}
-      {activeModal === 'create' && (
-        <div className="modal active" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-content" style={{ background: '#fff', padding: '2rem', borderRadius: '1rem', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2><i className="fas fa-user-plus"></i> Crear Usuario Nuevo</h2>
-              <button className="close-btn" onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', fontSize: '2rem', cursor: 'pointer' }}>&times;</button>
-            </div>
-            
-            <form onSubmit={handleCreateUser}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label>Nombre Completo *</label>
-                  <input type="text" className="box" value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-                </div>
-                <div>
-                  <label>Cédula *</label>
-                  <input type="text" className="box" value={formData.cedula} onChange={e => setFormData({...formData, cedula: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-                </div>
+        <section className="card" style={{ marginTop: '1.5rem' }}>
+          <div className="card-body">
+            <h2>Registrar incidencia</h2>
+            <form onSubmit={createIncident} style={{ display: 'grid', gap: '.8rem' }}>
+              <label htmlFor="incidentClient">Usuario de servicio</label>
+              <select id="incidentClient" className="box" required value={incidentForm.cliente_id} onChange={(event) => setIncidentForm({ ...incidentForm, cliente_id: event.target.value })}>
+                <option value="">Selecciona un usuario</option>
+                {users.map((user) => <option key={user.id_cliente} value={user.id_cliente}>{user.nombre_completo} — {user.cedula}</option>)}
+              </select>
+              <label htmlFor="incidentTitular">Titular o contacto</label>
+              <input id="incidentTitular" className="box" required value={incidentForm.titular} onChange={(event) => setIncidentForm({ ...incidentForm, titular: event.target.value })} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '.8rem' }}>
+                <div><label htmlFor="incidentType">Tipo</label><select id="incidentType" className="box" value={incidentForm.tipo} onChange={(event) => setIncidentForm({ ...incidentForm, tipo: event.target.value })}>{Object.entries(INCIDENT_TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+                <div><label htmlFor="incidentPriority">Prioridad</label><select id="incidentPriority" className="box" value={incidentForm.prioridad} onChange={(event) => setIncidentForm({ ...incidentForm, prioridad: event.target.value })}>{Object.entries(PRIORITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
               </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label>Correo Electrónico *</label>
-                  <input type="email" className="box" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-                </div>
-                <div>
-                  <label>Número de Contacto *</label>
-                  <input type="tel" className="box" value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-                </div>
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label>Dirección *</label>
-                  <input type="text" className="box" value={formData.direccion} onChange={e => setFormData({...formData, direccion: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-                </div>
-                <div>
-                  <label>Tipo de Servicio *</label>
-                  <select className="box" value={formData.tipoServicio} onChange={e => setFormData({...formData, tipoServicio: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }}>
-                    <option value="">Seleccionar servicio</option>
-                    <option value="internet">Internet</option>
-                    <option value="television">Televisión</option>
-                    <option value="tecnologia">Tecnología</option>
-                    <option value="electrico">Servicios Eléctricos</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div style={{ marginBottom: '1rem' }}>
-                <label>Observaciones</label>
-                <textarea className="box" rows="3" value={formData.observaciones} onChange={e => setFormData({...formData, observaciones: e.target.value})} placeholder="Observaciones adicionales..." style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }}></textarea>
-              </div>
-              
-              <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-                <button type="submit" className="btn" style={{ padding: '1rem 2rem', background: '#3137fd', color: '#fff', border: 'none', borderRadius: '.5rem', cursor: 'pointer' }}>Crear Usuario</button>
-                <button type="button" className="btn" onClick={() => setActiveModal(null)} style={{ background: '#666', color: '#fff', border: 'none', borderRadius: '.5rem', cursor: 'pointer', marginLeft: '1rem', padding: '1rem 2rem' }}>Cancelar</button>
-              </div>
+              <label htmlFor="incidentDescription">Descripción</label>
+              <textarea id="incidentDescription" className="box" required value={incidentForm.descripcion} onChange={(event) => setIncidentForm({ ...incidentForm, descripcion: event.target.value })} />
+              <label htmlFor="incidentLocation">Ubicación</label>
+              <input id="incidentLocation" className="box" required value={incidentForm.ubicacion} onChange={(event) => setIncidentForm({ ...incidentForm, ubicacion: event.target.value })} />
+              <button type="submit" className="btn">Registrar incidencia</button>
             </form>
           </div>
-        </div>
-      )}
+        </section>
 
-      {/* Search User Modal */}
-      {activeModal === 'search' && (
-        <div className="modal active" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-content" style={{ background: '#fff', padding: '2rem', borderRadius: '1rem', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2><i className="fas fa-search"></i> Buscar Usuario</h2>
-              <button className="close-btn" onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', fontSize: '2rem', cursor: 'pointer' }}>&times;</button>
+        <section className="card" style={{ marginTop: '1.5rem' }}>
+          <div className="card-body">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <h2>Bandeja de incidencias</h2>
+              <div><label htmlFor="incidentFilter">Cola</label>{' '}<select id="incidentFilter" value={incidentType} onChange={(event) => { const type = event.target.value; setIncidentType(type); loadIncidents(type); }}><option value="TODAS">Todas</option>{Object.entries(INCIDENT_TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
             </div>
-            
-            <form onSubmit={handleSearchModalSubmit}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label>Buscar por:</label>
-                <select className="box" value={searchCriteria.searchType} onChange={e => setSearchCriteria({...searchCriteria, searchType: e.target.value})} style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }}>
-                  <option value="nombre">Nombre</option>
-                  <option value="cedula">Cédula</option>
-                  <option value="email">Email</option>
-                  <option value="telefono">Teléfono</option>
-                </select>
-              </div>
-              
-              <div style={{ marginBottom: '1rem' }}>
-                <label>Término de búsqueda:</label>
-                <input type="text" className="box" value={searchCriteria.searchTerm} onChange={e => setSearchCriteria({...searchCriteria, searchTerm: e.target.value})} placeholder="Ingrese el término a buscar..." required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-              </div>
-              
-              <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-                <button type="submit" className="btn" style={{ padding: '1rem 2rem', background: '#3137fd', color: '#fff', border: 'none', borderRadius: '.5rem', cursor: 'pointer' }}>Buscar</button>
-                <button type="button" className="btn" onClick={() => setActiveModal(null)} style={{ background: '#666', color: '#fff', border: 'none', borderRadius: '.5rem', cursor: 'pointer', marginLeft: '1rem', padding: '1rem 2rem' }}>Cancelar</button>
-              </div>
-            </form>
-            
-            <div style={{ marginTop: '2rem' }}>
-              {searchResults.length > 0 && (
-                <div>
-                  <h3>Resultados de la búsqueda:</h3>
-                  {searchResults.map(user => (
-                    <div key={user.id} style={{ background: '#eee', padding: '1rem', margin: '1rem 0', borderRadius: '.5rem' }}>
-                      <h4>{user.nombre}</h4>
-                      <p><strong>Cédula:</strong> {user.cedula}</p>
-                      <p><strong>Email:</strong> {user.email}</p>
-                      <p><strong>Teléfono:</strong> {user.telefono}</p>
-                      <p><strong>Servicio:</strong> {getServiceTypeLabel(user.tipoServicio)}</p>
-                      <div style={{ marginTop: '1rem', display: 'flex', gap: '.5rem' }}>
-                        <button className="btn-action btn-view" onClick={() => { setCurrentUser(user); setActiveModal('view'); }} style={{ padding: '.4rem .8rem', background: '#3137fd', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Ver</button>
-                        <button className="btn-action btn-edit" onClick={() => { setCurrentUser(user); setFormData(user); setActiveModal('edit'); }} style={{ padding: '.4rem .8rem', background: '#ff9800', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Editar</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            {incidentLoading ? <p>Cargando incidencias...</p> : incidents.length === 0 ? <p>No hay incidencias pendientes en esta cola.</p> : (
+              <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}><thead><tr>{['ID', 'Cliente', 'Tipo', 'Prioridad', 'Descripción', 'Fecha', 'Estado'].map((title) => <th key={title} style={{ textAlign: 'left', padding: '.7rem', borderBottom: '1px solid #ddd' }}>{title}</th>)}</tr></thead><tbody>{incidents.map((incident) => <tr key={incident.id_incidencia}><td style={{ padding: '.7rem' }}>{incident.id_incidencia}</td><td style={{ padding: '.7rem' }}>{incident.nombre_cliente}</td><td style={{ padding: '.7rem' }}>{INCIDENT_TYPES[incident.tipo] || incident.tipo}</td><td style={{ padding: '.7rem' }}>{PRIORITY_LABELS[incident.prioridad] || incident.prioridad}</td><td style={{ padding: '.7rem' }}>{incident.descripcion}</td><td style={{ padding: '.7rem' }}>{new Date(incident.fecha_registro).toLocaleString()}</td><td style={{ padding: '.7rem' }}>{incident.estado}</td></tr>)}</tbody></table></div>
+            )}
+            <div style={{ display: 'flex', gap: '.6rem', flexWrap: 'wrap', marginTop: '1rem' }}>{Object.entries(INCIDENT_TYPES).map(([type, label]) => <button key={type} type="button" className="btn" onClick={() => takeNextIncident(type)}>Atender siguiente: {label}</button>)}</div>
+          </div>
+        </section>
+      </main>
+
+      {(modal === 'create' || modal === 'edit') && <div className="modal active" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', padding: '1rem' }}>
+        <form onSubmit={handleSubmit} className="card" style={{ width: 'min(700px, 100%)', maxHeight: '90vh', overflow: 'auto' }}>
+          <div className="card-body">
+            <h2>{editingId ? 'Editar usuario de servicio' : 'Crear usuario de servicio'}</h2>
+            {['nombre_completo', 'cedula', 'email', 'telefono', 'direccion'].map((field) => <div key={field} style={{ marginBottom: '.8rem' }}>
+              <label htmlFor={field}>{field === 'nombre_completo' ? 'Nombre completo' : field[0].toUpperCase() + field.slice(1)}</label>
+              <input id={field} className="box" required value={form[field]} onChange={(event) => setForm({ ...form, [field]: event.target.value })} />
+            </div>)}
+            <label htmlFor="tipo_servicio">Tipo de servicio</label>
+            <select id="tipo_servicio" className="box" required value={form.tipo_servicio} onChange={(event) => setForm({ ...form, tipo_servicio: event.target.value })}>
+              <option value="">Selecciona un tipo</option>
+              {Object.entries(SERVICE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <label htmlFor="observaciones">Observaciones (opcional)</label>
+            <textarea id="observaciones" className="box" value={form.observaciones} onChange={(event) => setForm({ ...form, observaciones: event.target.value })} />
+            <div style={{ display: 'flex', gap: '.8rem', marginTop: '1rem' }}>
+              <button type="submit" className="btn">Guardar</button>
+              <button type="button" className="btn" onClick={() => setModal(null)}>Cancelar</button>
             </div>
           </div>
-        </div>
-      )}
+        </form>
+      </div>}
 
-      {/* Edit User Modal */}
-      {activeModal === 'edit' && currentUser && (
-        <div className="modal active" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-content" style={{ background: '#fff', padding: '2rem', borderRadius: '1rem', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2><i className="fas fa-user-edit"></i> Modificar Usuario</h2>
-              <button className="close-btn" onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', fontSize: '2rem', cursor: 'pointer' }}>&times;</button>
-            </div>
-            
-            <form onSubmit={handleEditUser}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label>Nombre Completo *</label>
-                  <input type="text" className="box" value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-                </div>
-                <div>
-                  <label>Cédula *</label>
-                  <input type="text" className="box" value={formData.cedula} onChange={e => setFormData({...formData, cedula: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-                </div>
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label>Correo Electrónico *</label>
-                  <input type="email" className="box" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-                </div>
-                <div>
-                  <label>Número de Contacto *</label>
-                  <input type="tel" className="box" value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-                </div>
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <label>Dirección *</label>
-                  <input type="text" className="box" value={formData.direccion} onChange={e => setFormData({...formData, direccion: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }} />
-                </div>
-                <div>
-                  <label>Tipo de Servicio *</label>
-                  <select className="box" value={formData.tipoServicio} onChange={e => setFormData({...formData, tipoServicio: e.target.value})} required style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }}>
-                    <option value="">Seleccionar servicio</option>
-                    <option value="internet">Internet</option>
-                    <option value="television">Televisión</option>
-                    <option value="tecnologia">Tecnología</option>
-                    <option value="electrico">Servicios Eléctricos</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div style={{ marginBottom: '1rem' }}>
-                <label>Observaciones</label>
-                <textarea className="box" rows="3" value={formData.observaciones} onChange={e => setFormData({...formData, observaciones: e.target.value})} style={{ width: '100%', padding: '.8rem', border: '1px solid #ccc', borderRadius: '.4rem' }}></textarea>
-              </div>
-              
-              <div style={{ textAlign: 'center', marginTop: '2rem' }}>
-                <button type="submit" className="btn" style={{ padding: '1rem 2rem', background: '#3137fd', color: '#fff', border: 'none', borderRadius: '.5rem', cursor: 'pointer' }}>Guardar Cambios</button>
-                <button type="button" className="btn" onClick={() => setActiveModal(null)} style={{ background: '#666', color: '#fff', border: 'none', borderRadius: '.5rem', cursor: 'pointer', marginLeft: '1rem', padding: '1rem 2rem' }}>Cancelar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {modal === 'view' && selected && <div className="modal active" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', padding: '1rem' }}>
+        <div className="card" style={{ width: 'min(600px, 100%)' }}><div className="card-body">
+          <h2>Detalle del usuario</h2>
+          <p><strong>Nombre:</strong> {selected.nombre_completo}</p><p><strong>Cédula:</strong> {selected.cedula}</p><p><strong>Email:</strong> {selected.email}</p><p><strong>Teléfono:</strong> {selected.telefono}</p><p><strong>Dirección:</strong> {selected.direccion}</p><p><strong>Servicio:</strong> {SERVICE_LABELS[selected.tipo_servicio] || selected.tipo_servicio}</p><p><strong>Estado:</strong> {selected.activo ? 'Activo' : 'Inactivo'}</p>
+          <button type="button" className="btn" onClick={() => setModal(null)}>Cerrar</button>
+        </div></div>
+      </div>}
 
-      {/* View User Modal */}
-      {activeModal === 'view' && currentUser && (
-        <div className="modal active" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-content" style={{ background: '#fff', padding: '2rem', borderRadius: '1rem', width: '90%', maxWidth: '500px' }}>
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2><i className="fas fa-user"></i> Información del Usuario</h2>
-              <button className="close-btn" onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', fontSize: '2rem', cursor: 'pointer' }}>&times;</button>
-            </div>
-            
-            <div style={{ background: '#f9f9f9', padding: '1.5rem', borderRadius: '0.5rem', marginBottom: '1.5rem' }}>
-              <h3 style={{ marginBottom: '1rem' }}>{currentUser.nombre}</h3>
-              <p><strong>Cédula:</strong> {currentUser.cedula}</p>
-              <p><strong>Email:</strong> {currentUser.email}</p>
-              <p><strong>Teléfono:</strong> {currentUser.telefono}</p>
-              <p><strong>Servicio:</strong> {getServiceTypeLabel(currentUser.tipoServicio)}</p>
-              <p><strong>Dirección:</strong> {currentUser.direccion}</p>
-              {currentUser.observaciones && <p><strong>Observaciones:</strong> {currentUser.observaciones}</p>}
-              <p><strong>Estado:</strong> {currentUser.estado}</p>
-            </div>
-            
-            <div style={{ textAlign: 'center' }}>
-              <button className="btn" onClick={() => setActiveModal(null)} style={{ padding: '.8rem 1.5rem', background: '#666', color: '#fff', border: 'none', borderRadius: '.4rem', cursor: 'pointer' }}>Cerrar</button>
-              <button className="btn" onClick={() => { setFormData(currentUser); setActiveModal('edit'); }} style={{ padding: '.8rem 1.5rem', background: '#ff9800', color: '#fff', border: 'none', borderRadius: '.4rem', cursor: 'pointer', marginLeft: '1rem' }}>Modificar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {activeModal === 'delete' && currentUser && (
-        <div className="modal active confirmation-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="modal-content" style={{ background: '#fff', padding: '2rem', borderRadius: '1rem', width: '90%', maxWidth: '400px', textAlign: 'center' }}>
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h2 style={{ color: '#f44336' }}><i className="fas fa-exclamation-triangle"></i> Confirmar</h2>
-              <button className="close-btn" onClick={() => setActiveModal(null)} style={{ background: 'none', border: 'none', fontSize: '2rem', cursor: 'pointer' }}>&times;</button>
-            </div>
-            
-            <p style={{ fontSize: '1.4rem', margin: '1.5rem 0' }}>¿Está seguro de eliminar permanentemente al usuario <strong>{currentUser.nombre}</strong>?</p>
-            
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-              <button onClick={confirmDelete} style={{ padding: '.8rem 1.5rem', background: '#f44336', color: '#fff', border: 'none', borderRadius: '.4rem', cursor: 'pointer' }}>Sí, Eliminar</button>
-              <button onClick={() => setActiveModal(null)} style={{ padding: '.8rem 1.5rem', background: '#ccc', border: 'none', borderRadius: '.4rem', cursor: 'pointer' }}>Cancelar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {modal === 'delete' && selected && <div className="modal active" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', padding: '1rem' }}>
+        <div className="card" style={{ width: 'min(500px, 100%)' }}><div className="card-body">
+          <h2>Confirmar retiro</h2><p>¿Deseas retirar a <strong>{selected.nombre_completo}</strong> del listado operativo?</p>
+          <button type="button" className="btn" onClick={handleDelete}>Confirmar</button>{' '}
+          <button type="button" className="btn" onClick={() => setModal(null)}>Cancelar</button>
+        </div></div>
+      </div>}
     </>
   );
 }

@@ -1,36 +1,65 @@
-name: Deploy por entorno
+name: CI y despliegue AlfaRed
 
 on:
-  push: 
+  push:
     branches:
       - dev
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  deploy:
-    name: run pull
+  quality:
+    name: Calidad, pruebas y build
     runs-on: ubuntu-latest
+
     steps:
-      - name: Elegir archivo de entorno segun la rama
-        shell: bash
-        run: |
-          BRANCH="${GITHUB_REF_NAME}"
-          if [ "$BRANCH" = "main" ]; then
-            echo "ENV_FILE=.env.prod" >> "$GITHUB_ENV"
-            echo "APP_ENV=prod" >> "$GITHUB_ENV"
-          elif [ "$BRANCH" = "test" ]; then
-            echo "ENV_FILE=.env.test" >> "$GITHUB_ENV"
-            echo "APP_ENV=test" >> "$GITHUB_ENV"
-          else
-            echo "ENV_FILE=.env.dev" >> "$GITHUB_ENV"
-            echo "APP_ENV=dev" >> "$GITHUB_ENV"
-          fi
-          echo "Rama $BRANCH -> archivo de entorno"
-      - name: executing remote ssh commands using ssh
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Ejecutar ESLint
+        run: npm run lint
+
+      - name: Ejecutar pruebas Vitest y cobertura
+        run: npm run test:coverage
+
+      - name: Guardar cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-vitest
+          path: coverage/
+          if-no-files-found: warn
+
+      - name: Construir aplicación
+        run: npm run build
+
+  deploy:
+    name: Desplegar entorno dev
+    needs: quality
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Ejecutar despliegue remoto por SSH
         uses: appleboy/ssh-action@v1.0.0
         env:
-          ENV_FILE: ${{ env.ENV_FILE }}
-          APP_ENV: ${{ env.APP_ENV }}
+          ENV_FILE: .env.dev
+          APP_ENV: dev
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -39,9 +68,18 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           envs: ENV_FILE,APP_ENV
           script: |
+            set -e
+
             cd /root/admin/home/projects/victor/Alfare-next
-            git fetch
+
+            git fetch origin
             git checkout ${{ secrets.DEV_BRANCH }}
             git pull origin ${{ secrets.DEV_BRANCH }}
-            docker compose --env-file "${ENV_FILE}" up --build -d
-            exit
+
+            docker compose \
+              --env-file "${ENV_FILE}" \
+              up --build -d
+
+            docker compose \
+              --env-file "${ENV_FILE}" \
+              ps
