@@ -231,6 +231,7 @@ export default function TecnicoPage() {
                     <td style={{ padding: '.7rem' }}>{SERVICE_LABELS[user.tipo_servicio] || user.tipo_servicio}</td>
                     <td style={{ padding: '.7rem' }}>{user.activo ? 'Activo' : 'Inactivo'}</td>
                     <td style={{ padding: '.7rem', whiteSpace: 'nowrap' }}>
+                      <input type="checkbox"className="form-check-input"checked={!!user.activo}onChange={() => { setSelected(user); setModal('view2'); }}/>
                       <button type="button" className="btn" onClick={() => { setSelected(user); setModal('view'); }}>Ver</button>{' '}
                       <button type="button" className="btn" onClick={() => openEdit(user)}>Editar</button>{' '}
                       <button type="button" className="btn" onClick={() => { setSelected(user); setModal('delete'); }}>Retirar</button>
@@ -302,6 +303,42 @@ export default function TecnicoPage() {
           </div>
         </form>
       </div>}
+
+      {modal === 'view2' && selected && (
+  <div
+    className="modal active"
+    role="dialog"
+    aria-modal="true"
+    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', padding: '1rem' }}
+  >
+    <div className="card" style={{ width: 'min(600px, 100%)' }}>
+      <div className="card-body">
+        <h2>¿Está seguro de activar a este usuario?</h2>
+        <p><strong>Nombre:</strong> {selected.nombre_completo}</p>
+        <p><strong>Cédula:</strong> {selected.cedula}</p>
+        <p><strong>Email:</strong> {selected.email}</p>
+        <p><strong>Teléfono:</strong> {selected.telefono}</p>
+        <p><strong>Dirección:</strong> {selected.direccion}</p>
+        <p><strong>Servicio:</strong> {SERVICE_LABELS[selected.tipo_servicio] || selected.tipo_servicio}</p>
+        <p><strong>Estado:</strong> {selected.activo ? 'Activo' : 'Inactivo'}</p>
+
+        <button
+          type="button"
+          className="btn"
+          onClick={async () => {
+            await activarUsuario(selected); // tu función para activar
+            setModal(null);
+          }}
+        >
+          Confirmar
+        </button>{' '}
+        <button type="button" className="btn" onClick={() => setModal(null)}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {modal === 'view' && selected && <div className="modal active" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', padding: '1rem' }}>
         <div className="card" style={{ width: 'min(600px, 100%)' }}><div className="card-body">
