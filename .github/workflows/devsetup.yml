@@ -1,4 +1,4 @@
-name: Deploy por entorno
+name: CI y despliegue AlfaRed
 
 on:
   push: 
@@ -6,10 +6,18 @@ on:
       - dev
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
     name: run pull
     runs-on: ubuntu-latest
+
     steps:
       - name: Elegir archivo de entorno segun la rama
         shell: bash
