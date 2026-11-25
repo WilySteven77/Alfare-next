@@ -63,20 +63,62 @@ export default function TecnicoPage() {
     ].some((value) => String(value || '').toLowerCase().includes(term)));
   }, [query, users]);
 
-  const loadUsers = async () => {
-    setLoading(true);
-    setError('');
-    const response = await apiFetch('/tecnico/clientes', {
-      __actionLabel: 'Técnico: cargar usuarios de servicio',
-    });
-    if (!response?.success) {
-      setUsers([]);
-      setError(response?.error || 'No fue posible cargar los usuarios de servicio.');
-    } else {
-      setUsers((response.data || []).map(normalizeUser));
-    }
-    setLoading(false);
-  };
+  // Estados de formularios
+  const [formData, setFormData] = useState({
+    nombre: '',
+    cedula: '',
+    email: '',
+    telefono: '',
+    direccion: '',
+    tipoServicio: '',
+    observaciones: ''
+  });
+
+  const [searchCriteria, setSearchCriteria] = useState({
+    searchType: 'nombre',
+    searchTerm: ''
+  });
+  const [searchResults, setSearchResults] = useState([]);
+
+  // Carga inicial de usuarios
+  // Carga inicial de usuarios desde la base de datos/backend
+  useEffect(() => {
+    const fetchUsuarios = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch('/api/tecnico');
+        if (!response.ok) throw new Error('Error de red');
+        
+        const data = await response.json();
+        
+        // Ajustamos la respuesta del backend a un arreglo plano para la tabla
+        const usuariosCargados = [
+          ...(data.instalaciones || []), 
+          ...(data.servicios || []), 
+          ...(data.danos || [])
+        ].map((item, index) => ({
+          id: index + 1,
+          nombre: item.nombre,
+          cedula: item.titular || 'N/A', // Mapeo de titular a cédula
+          email: 'correo@ejemplo.com',
+          telefono: 'N/A',
+          direccion: item.ubicacion || 'N/A',
+          tipoServicio: item.tipoIncidencia === 'Instalación' ? 'internet' : 'tecnologia',
+          estado: 'activo',
+          observaciones: item.descripcion
+        }));
+
+        setUsers(usuariosCargados);
+        setFilteredUsers(usuariosCargados);
+      } catch (error) {
+        showMessage('error', 'Error al cargar los usuarios del servidor');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUsuarios();
+  }, []);
 
   const loadIncidents = async (type = incidentType) => {
     setIncidentLoading(true);
@@ -103,62 +145,48 @@ export default function TecnicoPage() {
     await loadIncidents();
   };
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const stored = getStoredUsuario();
-      const session = stored ? await refreshSessionFromServer() : null;
-      const current = getStoredUsuario();
-      const isTechnician = Boolean(
-        mounted && session?.success && current?.tipo?.toLowerCase() === 'tecnico'
-      );
-      if (!isTechnician) {
-        router.replace('/cuenta');
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    
+    // Adaptamos los datos del formulario a lo que espera el controlador
+    const payload = {
+      nombre: formData.nombre,
+      titular: formData.cedula,
+      tipoIncidencia: formData.tipoServicio === 'internet' ? 'Servicio' : 'Instalación',
+      tipoPrioridad: "Media",
+      descripcion: formData.observaciones || 'Sin observaciones',
+      ubicacion: formData.direccion
+    };
+
+    try {
+      const response = await fetch('/api/tecnico', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        showMessage('error', data.error || 'Error al crear el registro');
         return;
       }
-      setAuthorized(true);
-      await loadUsers();
-      await loadIncidents();
-    })();
-    return () => { mounted = false; };
-    // La carga inicial usa deliberadamente el filtro inicial TODAS.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
 
-  const openCreate = () => {
-    setForm(EMPTY_FORM);
-    setEditingId(null);
-    setModal('create');
-    setError('');
+      showMessage('success', 'Usuario creado exitosamente en el servidor');
+      setActiveModal(null);
+      setFormData({ nombre: '', cedula: '', email: '', telefono: '', direccion: '', tipoServicio: '', observaciones: '' });
+      
+      // Recargar la página para ver el nuevo registro (o podrías volver a llamar al fetch)
+      window.location.reload();
+
+    } catch (error) {
+      showMessage('error', 'Error de conexión con el servidor');
+    }
   };
-
-  const openEdit = (user) => {
-    setForm({
-      nombre_completo: user.nombre_completo || '',
-      cedula: user.cedula || '',
-      email: user.email || '',
-      telefono: user.telefono || '',
-      direccion: user.direccion || '',
-      tipo_servicio: user.tipo_servicio || '',
-      observaciones: user.observaciones || '',
-    });
-    setEditingId(user.id_cliente);
-    setModal('edit');
-    setError('');
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setError('');
-    setMessage('');
-    const endpoint = editingId ? `/tecnico/clientes/${editingId}` : '/tecnico/clientes';
-    const response = await apiFetch(endpoint, {
-      method: editingId ? 'PATCH' : 'POST',
-      body: JSON.stringify(form),
-      __actionLabel: editingId ? 'Técnico: actualizar usuario de servicio' : 'Técnico: crear usuario de servicio',
-    });
-    if (!response?.success) {
-      setError(response?.error || 'El servidor rechazó la operación.');
+  const handleEditUser = (e) => {
+    e.preventDefault();
+    if (users.some(u => u.cedula === formData.cedula && u.id !== currentUser.id)) {
+      showMessage('error', 'Ya existe otro usuario con esta cédula');
       return;
     }
     setModal(null);
