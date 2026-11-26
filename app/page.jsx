@@ -126,7 +126,7 @@ export default function HomePage() {
 
         <nav className={`navbar ${navbarActive ? 'active' : ''}`}>
           <Link href="#home">Inicio</Link>
-          <Link href="#about">Nosotros</Link>
+          <Link href="#about">Nosotr@s</Link>
           <Link href="#services">Servicios</Link>
           <Link href="#projects">Proyectos</Link>
           <Link href="#pricing">Planes</Link>

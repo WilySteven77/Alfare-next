@@ -17,6 +17,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
+# dumb-init se encarga de recibir las señales de terminación de Docker y pasarlas a Node
+RUN apk add --no-cache dumb-init
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs
 
