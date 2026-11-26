@@ -1,10 +1,6 @@
-name: CI y despliegue AlfaRed Dev
+name: CI y despliegue AlfaRed
 
 on:
-  pull_request:
-    branches:
-      - dev
-    types: [opened, synchronize, reopened]
   push:
     branches:
       - dev
@@ -55,7 +51,6 @@ jobs:
   deploy:
     name: Desplegar entorno dev
     needs: quality
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: development
 
@@ -71,6 +66,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT }}
+          command_timeout: 30m
           envs: ENV_FILE,APP_ENV
           script: |
             set -e
@@ -78,8 +74,8 @@ jobs:
             cd /root/projects/alfared_dev/Alfare-next
 
             git fetch origin
-            git checkout dev
-            git pull origin dev
+            git checkout ${{ secrets.DEV_BRANCH }}
+            git pull origin ${{ secrets.DEV_BRANCH }}
 
             docker compose \
               --env-file "${ENV_FILE}" \
