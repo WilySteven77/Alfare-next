@@ -201,7 +201,7 @@ export default function TecnicoPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <div>
             <h1 className="heading">Sistema de Gestión de Técnicos</h1>
-            <p className="muted">Usuarios de servicio registrados en AlfaRed Energía y Telecomunicaciones.</p>
+            <p className="muted">Usuarios de servicio registrados en AlfaRed Energía y Telecomunicaciones — Entorno Dev Activo.</p>
           </div>
           <button type="button" className="btn" onClick={openCreate}>Crear usuario</button>
         </div>
