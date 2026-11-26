@@ -318,10 +318,7 @@ export default function TecnicoPage() {
           </div>
         </form>
       </div>}
-<<<<<<< Updated upstream
 
-=======
->>>>>>> Stashed changes
       {modal === 'view' && selected && <div className="modal active" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', padding: '1rem' }}>
         <div className="card" style={{ width: 'min(600px, 100%)' }}><div className="card-body">
           <h2>Detalle del usuario</h2>
