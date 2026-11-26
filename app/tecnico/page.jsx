@@ -63,62 +63,20 @@ export default function TecnicoPage() {
     ].some((value) => String(value || '').toLowerCase().includes(term)));
   }, [query, users]);
 
-  // Estados de formularios
-  const [formData, setFormData] = useState({
-    nombre: '',
-    cedula: '',
-    email: '',
-    telefono: '',
-    direccion: '',
-    tipoServicio: '',
-    observaciones: ''
-  });
-
-  const [searchCriteria, setSearchCriteria] = useState({
-    searchType: 'nombre',
-    searchTerm: ''
-  });
-  const [searchResults, setSearchResults] = useState([]);
-
-  // Carga inicial de usuarios
-  // Carga inicial de usuarios desde la base de datos/backend
-  useEffect(() => {
-    const fetchUsuarios = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch('/api/tecnico');
-        if (!response.ok) throw new Error('Error de red');
-        
-        const data = await response.json();
-        
-        // Ajustamos la respuesta del backend a un arreglo plano para la tabla
-        const usuariosCargados = [
-          ...(data.instalaciones || []), 
-          ...(data.servicios || []), 
-          ...(data.danos || [])
-        ].map((item, index) => ({
-          id: index + 1,
-          nombre: item.nombre,
-          cedula: item.titular || 'N/A', // Mapeo de titular a cédula
-          email: 'correo@ejemplo.com',
-          telefono: 'N/A',
-          direccion: item.ubicacion || 'N/A',
-          tipoServicio: item.tipoIncidencia === 'Instalación' ? 'internet' : 'tecnologia',
-          estado: 'activo',
-          observaciones: item.descripcion
-        }));
-
-        setUsers(usuariosCargados);
-        setFilteredUsers(usuariosCargados);
-      } catch (error) {
-        showMessage('error', 'Error al cargar los usuarios del servidor');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUsuarios();
-  }, []);
+  const loadUsers = async () => {
+    setLoading(true);
+    setError('');
+    const response = await apiFetch('/tecnico/clientes', {
+      __actionLabel: 'Técnico: cargar usuarios de servicio',
+    });
+    if (!response?.success) {
+      setUsers([]);
+      setError(response?.error || 'No fue posible cargar los usuarios de servicio.');
+    } else {
+      setUsers((response.data || []).map(normalizeUser));
+    }
+    setLoading(false);
+  };
 
   const loadIncidents = async (type = incidentType) => {
     setIncidentLoading(true);
@@ -145,48 +103,62 @@ export default function TecnicoPage() {
     await loadIncidents();
   };
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    
-    // Adaptamos los datos del formulario a lo que espera el controlador
-    const payload = {
-      nombre: formData.nombre,
-      titular: formData.cedula,
-      tipoIncidencia: formData.tipoServicio === 'internet' ? 'Servicio' : 'Instalación',
-      tipoPrioridad: "Media",
-      descripcion: formData.observaciones || 'Sin observaciones',
-      ubicacion: formData.direccion
-    };
-
-    try {
-      const response = await fetch('/api/tecnico', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        showMessage('error', data.error || 'Error al crear el registro');
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const stored = getStoredUsuario();
+      const session = stored ? await refreshSessionFromServer() : null;
+      const current = getStoredUsuario();
+      const isTechnician = Boolean(
+        mounted && session?.success && current?.tipo?.toLowerCase() === 'tecnico'
+      );
+      if (!isTechnician) {
+        router.replace('/cuenta');
         return;
       }
+      setAuthorized(true);
+      await loadUsers();
+      await loadIncidents();
+    })();
+    return () => { mounted = false; };
+    // La carga inicial usa deliberadamente el filtro inicial TODAS.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
 
-      showMessage('success', 'Usuario creado exitosamente en el servidor');
-      setActiveModal(null);
-      setFormData({ nombre: '', cedula: '', email: '', telefono: '', direccion: '', tipoServicio: '', observaciones: '' });
-      
-      // Recargar la página para ver el nuevo registro (o podrías volver a llamar al fetch)
-      window.location.reload();
-
-    } catch (error) {
-      showMessage('error', 'Error de conexión con el servidor');
-    }
+  const openCreate = () => {
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+    setModal('create');
+    setError('');
   };
-  const handleEditUser = (e) => {
-    e.preventDefault();
-    if (users.some(u => u.cedula === formData.cedula && u.id !== currentUser.id)) {
-      showMessage('error', 'Ya existe otro usuario con esta cédula');
+
+  const openEdit = (user) => {
+    setForm({
+      nombre_completo: user.nombre_completo || '',
+      cedula: user.cedula || '',
+      email: user.email || '',
+      telefono: user.telefono || '',
+      direccion: user.direccion || '',
+      tipo_servicio: user.tipo_servicio || '',
+      observaciones: user.observaciones || '',
+    });
+    setEditingId(user.id_cliente);
+    setModal('edit');
+    setError('');
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    const endpoint = editingId ? `/tecnico/clientes/${editingId}` : '/tecnico/clientes';
+    const response = await apiFetch(endpoint, {
+      method: editingId ? 'PATCH' : 'POST',
+      body: JSON.stringify(form),
+      __actionLabel: editingId ? 'Técnico: actualizar usuario de servicio' : 'Técnico: crear usuario de servicio',
+    });
+    if (!response?.success) {
+      setError(response?.error || 'El servidor rechazó la operación.');
       return;
     }
     setModal(null);
@@ -259,7 +231,6 @@ export default function TecnicoPage() {
                     <td style={{ padding: '.7rem' }}>{SERVICE_LABELS[user.tipo_servicio] || user.tipo_servicio}</td>
                     <td style={{ padding: '.7rem' }}>{user.activo ? 'Activo' : 'Inactivo'}</td>
                     <td style={{ padding: '.7rem', whiteSpace: 'nowrap' }}>
-                      <input type="checkbox"className="form-check-input"checked={!!user.activo}onChange={() => { setSelected(user); setModal('view2'); }}/>
                       <button type="button" className="btn" onClick={() => { setSelected(user); setModal('view'); }}>Ver</button>{' '}
                       <button type="button" className="btn" onClick={() => openEdit(user)}>Editar</button>{' '}
                       <button type="button" className="btn" onClick={() => { setSelected(user); setModal('delete'); }}>Retirar</button>
@@ -331,42 +302,6 @@ export default function TecnicoPage() {
           </div>
         </form>
       </div>}
-
-      {modal === 'view2' && selected && (
-  <div
-    className="modal active"
-    role="dialog"
-    aria-modal="true"
-    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', padding: '1rem' }}
-  >
-    <div className="card" style={{ width: 'min(600px, 100%)' }}>
-      <div className="card-body">
-        <h2>¿Está seguro de activar a este usuario?</h2>
-        <p><strong>Nombre:</strong> {selected.nombre_completo}</p>
-        <p><strong>Cédula:</strong> {selected.cedula}</p>
-        <p><strong>Email:</strong> {selected.email}</p>
-        <p><strong>Teléfono:</strong> {selected.telefono}</p>
-        <p><strong>Dirección:</strong> {selected.direccion}</p>
-        <p><strong>Servicio:</strong> {SERVICE_LABELS[selected.tipo_servicio] || selected.tipo_servicio}</p>
-        <p><strong>Estado:</strong> {selected.activo ? 'Activo' : 'Inactivo'}</p>
-
-        <button
-          type="button"
-          className="btn"
-          onClick={async () => {
-            await activarUsuario(selected); // tu función para activar
-            setModal(null);
-          }}
-        >
-          Confirmar
-        </button>{' '}
-        <button type="button" className="btn" onClick={() => setModal(null)}>
-          Cancelar
-        </button>
-      </div>
-    </div>
-  </div>
-)}
 
       {modal === 'view' && selected && <div className="modal active" role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', padding: '1rem' }}>
         <div className="card" style={{ width: 'min(600px, 100%)' }}><div className="card-body">

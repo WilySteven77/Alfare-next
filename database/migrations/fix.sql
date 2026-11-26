@@ -64,24 +64,21 @@ CREATE TABLE IF NOT EXISTS alfared.historialordenes (
     comentario TEXT
 );
 
--- Vistas en el esquema public para garantizar compatibilidad total
+-- Vistas en el esquema public
 CREATE OR REPLACE VIEW public.clientesservicio AS SELECT * FROM alfared.clientesservicio;
 CREATE OR REPLACE VIEW public.incidencias AS SELECT * FROM alfared.incidencias;
 CREATE OR REPLACE VIEW public.ordenestrabajo AS SELECT * FROM alfared.ordenestrabajo;
 CREATE OR REPLACE VIEW public.mantenimientos AS SELECT * FROM alfared.mantenimientos;
 CREATE OR REPLACE VIEW public.historialordenes AS SELECT * FROM alfared.historialordenes;
 
--- Configurar search_path del rol y de la base de datos
 ALTER ROLE postgres SET search_path TO alfared, public;
 ALTER DATABASE "Alfared" SET search_path TO alfared, public;
 
--- Permisos
 GRANT ALL ON ALL TABLES IN SCHEMA alfared TO postgres;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA alfared TO postgres;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres;
 
--- Insertar cliente de prueba si no existe
 INSERT INTO alfared.clientesservicio (nombre_completo, cedula, email, telefono, direccion, tipo_servicio)
 VALUES ('Cliente Demo AlfaRed', '1061000001', 'cliente.demo@alfared.local', '3001234567', 'Calle 5 # 10-20', 'INTERNET')
 ON CONFLICT (cedula) DO NOTHING;
