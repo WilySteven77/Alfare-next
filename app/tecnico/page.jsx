@@ -13,6 +13,7 @@ const EMPTY_FORM = {
   direccion: '',
   tipo_servicio: '',
   observaciones: '',
+  activo: true,
 };
 
 const SERVICE_LABELS = {
@@ -141,6 +142,7 @@ export default function TecnicoPage() {
       direccion: user.direccion || '',
       tipo_servicio: user.tipo_servicio || '',
       observaciones: user.observaciones || '',
+      activo: Boolean(user.activo),
     });
     setEditingId(user.id_cliente);
     setModal('edit');
@@ -295,6 +297,20 @@ export default function TecnicoPage() {
             </select>
             <label htmlFor="observaciones">Observaciones (opcional)</label>
             <textarea id="observaciones" className="box" value={form.observaciones} onChange={(event) => setForm({ ...form, observaciones: event.target.value })} />
+            
+            <div style={{ marginTop: '.8rem', display: 'flex', alignItems: 'center', gap: '.6rem' }}>
+              <input
+                type="checkbox"
+                id="cliente_activo"
+                checked={Boolean(form.activo)}
+                onChange={(event) => setForm({ ...form, activo: event.target.checked })}
+                style={{ width: '1.2rem', height: '1.2rem', cursor: 'pointer' }}
+              />
+              <label htmlFor="cliente_activo" style={{ cursor: 'pointer', margin: 0, fontWeight: 500 }}>
+                {form.activo ? 'Estado: Activo' : 'Estado: Inactivo'}
+              </label>
+            </div>
+
             <div style={{ display: 'flex', gap: '.8rem', marginTop: '1rem' }}>
               <button type="submit" className="btn">Guardar</button>
               <button type="button" className="btn" onClick={() => setModal(null)}>Cancelar</button>
