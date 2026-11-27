@@ -298,16 +298,28 @@ export default function TecnicoPage() {
             <label htmlFor="observaciones">Observaciones (opcional)</label>
             <textarea id="observaciones" className="box" value={form.observaciones} onChange={(event) => setForm({ ...form, observaciones: event.target.value })} />
             
-            <div style={{ marginTop: '.8rem', display: 'flex', alignItems: 'center', gap: '.6rem' }}>
-              <input
-                type="checkbox"
-                id="cliente_activo"
-                checked={Boolean(form.activo)}
-                onChange={(event) => setForm({ ...form, activo: event.target.checked })}
-                style={{ width: '1.2rem', height: '1.2rem', cursor: 'pointer' }}
-              />
-              <label htmlFor="cliente_activo" style={{ cursor: 'pointer', margin: 0, fontWeight: 500 }}>
-                {form.activo ? 'Estado: Activo' : 'Estado: Inactivo'}
+            <div style={{ marginTop: '.8rem', display: 'flex', gap: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer', fontWeight: 500 }}>
+                <input
+                  type="radio"
+                  name="cliente_activo"
+                  value="true"
+                  checked={form.activo === true}
+                  onChange={() => setForm({ ...form, activo: true })}
+                  style={{ cursor: 'pointer' }}
+                />
+                Activo
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '.5rem', cursor: 'pointer', fontWeight: 500 }}>
+                <input
+                  type="radio"
+                  name="cliente_activo"
+                  value="false"
+                  checked={form.activo === false}
+                  onChange={() => setForm({ ...form, activo: false })}
+                  style={{ cursor: 'pointer' }}
+                />
+                Inactivo
               </label>
             </div>
 
