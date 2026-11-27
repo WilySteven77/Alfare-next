@@ -75,7 +75,7 @@ jobs:
           script: |
             set -e
 
-            cd /root/projects/alfared_prod/Alfare-next-prod || cd /root/admin/home/projects/victor/Alfare-next-prod
+            cd /root/projects/Alfare-next
 
             git fetch origin
             git checkout main
