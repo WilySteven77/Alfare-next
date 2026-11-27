@@ -1,23 +1,20 @@
-name: CI y Despliegue AlfaRed Dev
+name: CI y Despliegue AlfaRed Produccion
 
 on:
-  # Al abrir o actualizar un Pull Request hacia dev: valida calidad y tests
   pull_request:
     branches:
-      - dev
+      - main
     types: [opened, synchronize, reopened]
-
-  # Al aceptar/fusionar (merge) el Pull Request en dev: despliega al servidor
   push:
     branches:
-      - dev
+      - main
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-dev-${{ github.ref }}
+  group: deploy-prod-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -56,34 +53,33 @@ jobs:
         run: npm run build
 
   deploy:
-    name: Desplegar entorno dev
+    name: Desplegar entorno produccion
     needs: quality
-    # Se ejecuta SOLO cuando se hace merge (push en dev) o ejecución manual
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    environment: development
 
     steps:
       - name: Ejecutar despliegue remoto por SSH
         uses: appleboy/ssh-action@v1.0.0
         env:
-          ENV_FILE: .env.dev
-          APP_ENV: dev
+          ENV_FILE: .env.prod
+          APP_ENV: prod
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 30m
           envs: ENV_FILE,APP_ENV
           script: |
             set -e
 
-            cd /root/projects/alfared_dev/Alfare-next
+            cd /root/projects/alfared_prod/Alfare-next-prod || cd /root/admin/home/projects/victor/Alfare-next-prod
 
             git fetch origin
-            git checkout dev
-            git pull origin dev
+            git checkout main
+            git pull origin main
 
             docker compose \
               --env-file "${ENV_FILE}" \
